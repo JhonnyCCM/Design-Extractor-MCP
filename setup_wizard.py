@@ -1,7 +1,7 @@
 """
 Interactive Setup Wizard and Testing Console for Web Design Extractor MCP.
-Allows configuring storage directories, testing extractions with visual spinners,
-and viewing agent instruction templates directly inside the terminal.
+Allows configuring storage directories, auto-registering into detected AI agents and CLIs,
+and testing web extractions directly inside the terminal.
 """
 
 import os
@@ -20,35 +20,7 @@ from config_manager import get_configured_output_dir, set_configured_output_dir
 from core_extractor import extract_page_design_data, generate_agent_design_spec, take_screenshot
 from server import _url_to_slug
 from ui import console, show_dashboard, show_menu
-
-MCP_CONFIG_PATH = Path.home() / ".gemini" / "config" / "mcp_config.json"
-
-
-def is_mcp_registered() -> bool:
-    """Checks if web-design-extractor is present in mcp_config.json."""
-    if not MCP_CONFIG_PATH.exists():
-        return False
-    try:
-        data = json.loads(MCP_CONFIG_PATH.read_text(encoding="utf-8"))
-        return "web-design-extractor" in data.get("mcpServers", {})
-    except Exception:
-        return False
-
-
-def sync_mcp_config_env(new_dir: str) -> None:
-    """Synchronizes the DESIGN_SPECS_DIR in mcp_config.json if the file exists."""
-    if not MCP_CONFIG_PATH.exists():
-        return
-    try:
-        data = json.loads(MCP_CONFIG_PATH.read_text(encoding="utf-8"))
-        if "web-design-extractor" in data.get("mcpServers", {}):
-            server_entry = data["mcpServers"]["web-design-extractor"]
-            if "env" not in server_entry:
-                server_entry["env"] = {}
-            server_entry["env"]["DESIGN_SPECS_DIR"] = new_dir
-            MCP_CONFIG_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+from agent_integrator import detect_all_agents, register_all_detected_agents, register_agent
 
 
 def handle_change_directory() -> None:
@@ -65,11 +37,38 @@ def handle_change_directory() -> None:
 
     try:
         resolved = set_configured_output_dir(new_path)
-        sync_mcp_config_env(resolved)
         console.print(f"[green][OK] Carpeta actualizada exitosamente a:[/green] [bold cyan]{resolved}[/bold cyan]")
-        console.print("[dim][OK] Sincronizado en config.json y ~/.gemini/config/mcp_config.json[/dim]")
+        
+        # Sync configured agents
+        console.print("[dim]Sincronizando la nueva ruta en las configuraciones de agentes detectados...[/dim]")
+        register_all_detected_agents()
+        console.print("[green][OK] Agentes actualizados con la nueva ruta de guardado.[/green]")
     except Exception as e:
         console.print(f"[red]Error al configurar ruta: {str(e)}[/red]")
+
+
+def handle_register_all_agents() -> None:
+    """Detects and registers the MCP server in all installed agents and CLIs."""
+    console.print()
+    with console.status("[bold #38bdf8]Detectando clientes y registrando servidor MCP...[/bold #38bdf8]", spinner="dots"):
+        results = register_all_detected_agents()
+
+    res_table = Table(box=box.ROUNDED, expand=True, border_style="#0284c7")
+    res_table.add_column("CLIENTE / CLI", style="bold white", width=28)
+    res_table.add_column("RESULTADO", style="bold", width=18)
+    res_table.add_column("DETALLE", style="dim white")
+
+    agents = detect_all_agents()
+    for aid, (success, msg) in results.items():
+        name = agents[aid].name if aid in agents else aid
+        status_str = "[green][OK] Vinculado[/green]" if success else "[red][X] Error[/red]"
+        res_table.add_row(name, status_str, msg)
+
+    console.print(Panel(
+        res_table,
+        title="[bold #38bdf8] VINCULACIÓN EN CLIENTES Y CLIs [/bold #38bdf8]",
+        box=box.ROUNDED
+    ))
 
 
 def handle_test_extraction() -> None:
@@ -135,54 +134,37 @@ def handle_open_folder() -> None:
 def handle_view_agent_guide() -> None:
     """Shows the agent prompt guide."""
     guide = Text()
-    guide.append("¿Cómo usar las hojas de especificación con otros agentes?\n\n", style="bold #38bdf8")
-    guide.append("1. Localiza el archivo .md generado en tu carpeta de especificaciones.\n", style="white")
-    guide.append("2. Abre el archivo y copia la sección final:\n", style="white")
-    guide.append("   '### AGENT MASTER DIRECTIVES: DESIGN FIDELITY RULES'\n\n", style="bold yellow")
-    guide.append("3. Pega ese bloque en el prompt de tu agente (Cursor, Gemini, Claude, etc.) junto con tu requerimiento:\n", style="white")
-    guide.append("   Ejemplo: 'Construye un dashboard de finanzas siguiendo estrictamente las directivas de este sistema de diseño [pegar directivas]'\n\n", style="dim")
-    guide.append("4. El agente respetará la paleta exacta, las fuentes, radios de 18px o 6px, y la estructura de divs.\n", style="green")
+    guide.append("¿Cómo pedirle a tu IA que use el MCP en cualquier terminal o IDE?\n\n", style="bold #38bdf8")
+    guide.append("1. Si usas Antigravity, Codex CLI, Claude Desktop o Cursor:\n", style="white")
+    guide.append("   Escribe directamente en tu chat:\n", style="dim")
+    guide.append("   \"Extrae el sistema de diseño de https://sitio.com\"\n\n", style="bold yellow")
+    guide.append("   El agente llamará automáticamente a la herramienta extract_design_system del servidor.\n\n", style="white")
+    guide.append("2. Si quieres usar la especificación para construir una nueva web:\n", style="bold #38bdf8")
+    guide.append("   Dile a tu agente:\n", style="dim")
+    guide.append("   \"Usa la especificación generada de https://sitio.com y créame una web de [tu proyecto] aplicando exactamente sus colores, tipografías y estructura de contenedores.\"\n\n", style="bold green")
+    guide.append("3. Todos los archivos se mantendrán sincronizados en tu carpeta centralizada de especificaciones.\n", style="italic")
 
     console.print(Panel(guide, title="[bold white] GUÍA DE PROMPTS PARA AGENTES [/bold white]", box=box.ROUNDED, border_style="#4f46e5"))
-
-
-def handle_check_mcp_config() -> None:
-    """Inspects and displays mcp_config.json configuration."""
-    console.print()
-    if not MCP_CONFIG_PATH.exists():
-        console.print(f"[red]No se encontró el archivo {MCP_CONFIG_PATH}[/red]")
-        return
-
-    try:
-        data = json.loads(MCP_CONFIG_PATH.read_text(encoding="utf-8"))
-        cfg = data.get("mcpServers", {}).get("web-design-extractor")
-        if cfg:
-            console.print("[green][OK] Servidor 'web-design-extractor' registrado correctamente:[/green]")
-            console.print(Panel(json.dumps(cfg, indent=2), title="[bold cyan] mcp_config.json [/bold cyan]", box=box.ROUNDED))
-        else:
-            console.print("[yellow]! El servidor no está registrado en mcpServers.[/yellow]")
-    except Exception as e:
-        console.print(f"[red]Error al leer mcp_config.json: {str(e)}[/red]")
 
 
 def run_wizard() -> None:
     """Main interactive wizard loop."""
     while True:
         output_dir = get_configured_output_dir()
-        mcp_ok = is_mcp_registered()
-        show_dashboard(output_dir, mcp_ok)
+        agents = detect_all_agents()
+        show_dashboard(output_dir, agents)
         choice = show_menu()
 
         if choice == "1":
             handle_change_directory()
         elif choice == "2":
-            handle_test_extraction()
+            handle_register_all_agents()
         elif choice == "3":
-            handle_open_folder()
+            handle_test_extraction()
         elif choice == "4":
-            handle_view_agent_guide()
+            handle_open_folder()
         elif choice == "5":
-            handle_check_mcp_config()
+            handle_view_agent_guide()
         elif choice in ["0", "q", "exit", "salir"]:
             console.print("\n[bold green]¡Hasta pronto! Que disfrutes construyendo grandes interfaces.[/bold green]\n")
             break
