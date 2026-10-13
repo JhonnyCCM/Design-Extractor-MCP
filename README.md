@@ -1,4 +1,4 @@
-# Web Design Extractor MCP 🌐✨
+# Design Extractor MCP 🌐✨
 > **Model Context Protocol (MCP) Server & CLI para ingeniería inversa de sistemas de diseño, estructuras de contenedores y generación de directivas para Agentes de IA.**
 
 [![MCP Standard](https://img.shields.io/badge/MCP-Protocol%201.0-blue.svg)](https://modelcontextprotocol.io)
@@ -10,7 +10,7 @@
 
 ## 🎯 ¿Qué hace este proyecto?
 
-**Web Design Extractor MCP** es un servidor que navega cualquier página web en tiempo real usando un navegador headless (Playwright) para inspeccionar tanto el código fuente como los estilos computados del DOM.
+**Design Extractor MCP** es un servidor que navega cualquier página web en tiempo real usando un navegador headless (Playwright) para inspeccionar tanto el código fuente como los estilos computados del DOM.
 
 Extrae automáticamente:
 1. **🎨 Paleta y Tokens de Color:** Fondos de canvas, superficies/tarjetas, colores de texto (alto contraste y atenuado), acento de marca y bordes, con normalización automática a HEX/RGBA.
@@ -102,8 +102,8 @@ python cli.py setup
 
 ### 1. Clonar el repositorio
 ```bash
-git clone https://github.com/tu-usuario/web-design-extractor-mcp.git
-cd web-design-extractor-mcp
+git clone https://github.com/JhonnyCCM/Design-Extractor-MCP.git
+cd Design-Extractor-MCP
 ```
 
 ### 2. Crear entorno virtual e instalar dependencias
