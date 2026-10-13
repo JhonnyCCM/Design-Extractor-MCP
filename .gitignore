@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Local User Configurations
+config.json
+
+# Local Generated Specs and Screenshots (not documentation)
+*.png
+*_spec.md
+!README.md
+
+# OS Artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs & Playwright
+browser-install.log
+*.log
