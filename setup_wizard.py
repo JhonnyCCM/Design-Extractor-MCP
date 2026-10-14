@@ -147,6 +147,124 @@ def handle_view_agent_guide() -> None:
     console.print(Panel(guide, title="[bold white] GUÍA DE PROMPTS PARA AGENTES [/bold white]", box=box.ROUNDED, border_style="#4f46e5"))
 
 
+def handle_path_integration() -> None:
+    """Interactively manages global PATH integration for design-extractor."""
+    from path_installer import is_path_installed, install_global_command, uninstall_global_command
+    console.print()
+    installed = is_path_installed()
+
+    if installed:
+        console.print("[green][OK] El comando global 'design-extractor' ya está instalado en tu PATH.[/green]")
+        console.print("[dim]Puedes invocarlo directamente desde cualquier terminal (CMD, PowerShell, Bash, Git Bash).[/dim]")
+        action = console.input("\n[bold #fbc43f]¿Deseas desinstalar el comando global de tu PATH? [s/N]: [/bold #fbc43f]").strip().lower()
+        if action in ["s", "si", "y", "yes"]:
+            ok, msg = uninstall_global_command()
+            status = "[green][OK][/green]" if ok else "[red][ERROR][/red]"
+            console.print(f"{status} {msg}")
+    else:
+        console.print("[yellow][!] El comando global 'design-extractor' aún no está vinculado en tu PATH.[/yellow]")
+        console.print("[dim]Esto te permitirá usar 'design-extractor' sin escribir rutas a Python ni navegar a la carpeta del proyecto.[/dim]")
+        action = console.input("\n[bold #38bdf8]¿Deseas instalar el comando global ahora? [S/n]: [/bold #38bdf8]").strip().lower()
+        if action in ["", "s", "si", "y", "yes"]:
+            ok, msg = install_global_command()
+            status = "[green][OK][/green]" if ok else "[red][ERROR][/red]"
+            console.print(f"{status} {msg}")
+
+
+def handle_manage_presets() -> None:
+    """Interactively manages workflow presets and custom commands."""
+    from preset_manager import get_all_presets, create_or_update_preset, delete_preset, run_preset
+
+    while True:
+        console.print()
+        presets = get_all_presets()
+
+        p_table = Table(box=box.ROUNDED, expand=True, border_style="#38bdf8")
+        p_table.add_column("COMANDO / PRESET", style="bold cyan", width=18)
+        p_table.add_column("DESCRIPCIÓN", style="white", width=36)
+        p_table.add_column("CAPTURA", style="bold", width=10)
+        p_table.add_column("ESPERA (s)", style="bold", width=10)
+        p_table.add_column("CARPETA DE SALIDA", style="dim white")
+
+        for name, p_data in presets.items():
+            shot = "[green]Sí[/green]" if p_data.get("screenshot", True) else "[dim red]No[/dim red]"
+            wait = f"{p_data.get('wait_seconds', 2)}s"
+            out = p_data.get("output_dir") or "[dim]Predeterminada global[/dim]"
+            desc = p_data.get("description", "")
+            p_table.add_row(name, desc, shot, wait, str(out))
+
+        console.print(Panel(
+            p_table,
+            title="[bold #38bdf8] COMANDOS PERSONALIZADOS Y PRESETS DISPONIBLES [/bold #38bdf8]",
+            box=box.ROUNDED
+        ))
+
+        console.print("[bold white]Opciones:[/bold white]")
+        console.print("  [1] Ejecutar un preset sobre una URL ahora")
+        console.print("  [2] Crear o editar un comando personalizado")
+        console.print("  [3] Eliminar un comando personalizado")
+        console.print("  [0] Volver al menú principal")
+
+        opt = console.input("\n[bold #38bdf8]Elige una opción [0-3]: [/bold #38bdf8]").strip()
+
+        if opt == "1":
+            p_name = console.input("[bold #38bdf8]Nombre del preset a ejecutar (ej: quick, full): [/bold #38bdf8]").strip().lower()
+            if p_name not in presets:
+                console.print(f"[red]El preset '{p_name}' no existe.[/red]")
+                continue
+            url = console.input("[bold #38bdf8]URL de la página web a analizar: [/bold #38bdf8]").strip()
+            if not url:
+                console.print("[yellow]Operación cancelada.[/yellow]")
+                continue
+            try:
+                with console.status(f"[bold #38bdf8]Ejecutando preset '{p_name}' sobre {url}...[/bold #38bdf8]", spinner="dots"):
+                    res = run_preset(p_name, url)
+                console.print(f"[green][OK] Extracción con preset '{p_name}' finalizada![/green]")
+                console.print(f"  Markdown: [cyan]{res['spec_file']}[/cyan]")
+                if res['preview_file']:
+                    console.print(f"  Captura:  [cyan]{res['preview_file']}[/cyan]")
+            except Exception as e:
+                console.print(f"[red]Error al ejecutar preset: {str(e)}[/red]")
+
+        elif opt == "2":
+            p_name = console.input("[bold #38bdf8]Nombre para el comando (ej: landing, mobile): [/bold #38bdf8]").strip().lower()
+            if not p_name:
+                continue
+            desc = console.input("[dim]Descripción del flujo: [/dim]").strip()
+            out = console.input("[dim]Carpeta de salida personalizada (Enter para usar la global): [/dim]").strip()
+            shot_str = console.input("[dim]¿Tomar captura de pantalla PNG? [S/n]: [/dim]").strip().lower()
+            screenshot = shot_str not in ["n", "no", "false", "0"]
+            wait_str = console.input("[dim]Segundos de espera para hidratación JS [1-15, default 2]: [/dim]").strip()
+            try:
+                wait_sec = int(wait_str) if wait_str else 2
+            except ValueError:
+                wait_sec = 2
+
+            create_or_update_preset(
+                name=p_name,
+                description=desc,
+                output_dir=out if out else None,
+                screenshot=screenshot,
+                wait_seconds=wait_sec
+            )
+            console.print(f"[green][OK] Comando personalizado '{p_name}' guardado exitosamente.[/green]")
+            console.print(f"[dim]Ahora puedes invocarlo directamente en cualquier terminal:[/dim]")
+            console.print(f"  [bold yellow]design-extractor {p_name} <url>[/bold yellow]")
+
+        elif opt == "3":
+            p_name = console.input("[bold #fbc43f]Nombre del comando a eliminar: [/bold #fbc43f]").strip().lower()
+            if p_name in ["quick", "full"]:
+                console.print(f"[yellow]El preset '{p_name}' es un valor por defecto del sistema y no puede eliminarse.[/yellow]")
+            else:
+                if delete_preset(p_name):
+                    console.print(f"[green][OK] Comando '{p_name}' eliminado.[/green]")
+                else:
+                    console.print(f"[yellow]No se encontró el comando personalizado '{p_name}'.[/yellow]")
+
+        elif opt in ["0", "q", "exit", "volver"]:
+            break
+
+
 def run_wizard() -> None:
     """Main interactive wizard loop."""
     while True:
@@ -164,15 +282,20 @@ def run_wizard() -> None:
         elif choice == "4":
             handle_open_folder()
         elif choice == "5":
+            handle_path_integration()
+        elif choice == "6":
+            handle_manage_presets()
+        elif choice == "7":
             handle_view_agent_guide()
         elif choice in ["0", "q", "exit", "salir"]:
             console.print("\n[bold green]¡Hasta pronto! Que disfrutes construyendo grandes interfaces.[/bold green]\n")
             break
         else:
-            console.print("[red]Opción no válida. Elige un número del 0 al 5.[/red]")
+            console.print("[red]Opción no válida. Elige un número del 0 al 7.[/red]")
 
         console.input("\n[dim]Presiona Enter para continuar...[/dim]")
 
 
 if __name__ == "__main__":
     run_wizard()
+

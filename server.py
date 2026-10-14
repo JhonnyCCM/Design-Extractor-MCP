@@ -15,9 +15,9 @@ from mcp.server.fastmcp import FastMCP
 
 from config_manager import get_configured_output_dir, set_configured_output_dir
 from core_extractor import (
-    extract_page_design_data,
-    inspect_single_element,
-    take_screenshot,
+    async_extract_page_design_data,
+    async_inspect_single_element,
+    async_take_screenshot,
     generate_agent_design_spec
 )
 
@@ -64,7 +64,7 @@ def set_output_directory(path: str) -> str:
 
 
 @mcp.tool()
-def extract_design_system(url: str, output_file: str = "") -> str:
+async def extract_design_system(url: str, output_file: str = "") -> str:
     """
     Visits a webpage with a headless browser, conducts deep source code and DOM inspection
     (HTML source, stylesheets, CSS variables, typography hierarchy, container max-widths,
@@ -83,7 +83,7 @@ def extract_design_system(url: str, output_file: str = "") -> str:
         slug = _url_to_slug(url)
 
         # 1. Extract DOM, CSS and source code intelligence
-        data = extract_page_design_data(url)
+        data = await async_extract_page_design_data(url)
         spec_md = generate_agent_design_spec(data, url)
 
         # 2. Determine file paths
@@ -99,7 +99,7 @@ def extract_design_system(url: str, output_file: str = "") -> str:
 
         # 3. Capture screenshot
         target_png = target_md.parent / f"{slug}_preview.png"
-        take_screenshot(url, str(target_png), full_page=True)
+        await async_take_screenshot(url, str(target_png), full_page=True)
 
         location_notice = (
             f"\n\n---\n"
@@ -114,7 +114,7 @@ def extract_design_system(url: str, output_file: str = "") -> str:
 
 
 @mcp.tool()
-def inspect_page_source(url: str) -> str:
+async def inspect_page_source(url: str) -> str:
     """
     Inspects the raw source code of a webpage: framework detection (React, Next.js, Vue, Tailwind, etc.),
     external stylesheet links, font definitions, and meta tags.
@@ -126,7 +126,7 @@ def inspect_page_source(url: str) -> str:
         JSON string summarizing framework detection, stylesheets, scripts, and meta tags.
     """
     try:
-        data = extract_page_design_data(url)
+        data = await async_extract_page_design_data(url)
         summary = {
             "title": data.get("title"),
             "url": data.get("url"),
@@ -144,7 +144,7 @@ def inspect_page_source(url: str) -> str:
 
 
 @mcp.tool()
-def inspect_component(url: str, selector: str) -> str:
+async def inspect_component(url: str, selector: str) -> str:
     """
     Inspects a specific HTML element or component on a page by CSS selector (e.g. 'header', '.pricing-card', 'button').
     Returns its exact computed CSS, layout dimensions, typography, colors, and outer HTML snippet.
@@ -157,14 +157,14 @@ def inspect_component(url: str, selector: str) -> str:
         JSON string containing detailed computed styles and structural metrics.
     """
     try:
-        res = inspect_single_element(url, selector)
+        res = await async_inspect_single_element(url, selector)
         return json.dumps(res, indent=2)
     except Exception as e:
         return f"Error inspecting selector '{selector}' on {url}: {str(e)}"
 
 
 @mcp.tool()
-def generate_tailwind_theme(url: str) -> str:
+async def generate_tailwind_theme(url: str) -> str:
     """
     Extracts the design tokens from a webpage and outputs a ready-to-paste Tailwind CSS configuration
     and CSS custom properties block.
@@ -176,7 +176,7 @@ def generate_tailwind_theme(url: str) -> str:
         Tailwind config JavaScript and CSS variables snippet.
     """
     try:
-        data = extract_page_design_data(url)
+        data = await async_extract_page_design_data(url)
         spec_md = generate_agent_design_spec(data, url)
         if "## 5. Ready-to-Paste Tailwind CSS Configuration" in spec_md:
             tailwind_part = spec_md.split("## 5. Ready-to-Paste Tailwind CSS Configuration")[1].split("---")[0]
@@ -187,7 +187,7 @@ def generate_tailwind_theme(url: str) -> str:
 
 
 @mcp.tool()
-def capture_page_screenshot(url: str, output_path: str = "") -> str:
+async def capture_page_screenshot(url: str, output_path: str = "") -> str:
     """
     Captures a full-page high-resolution screenshot of a webpage for visual design reference
     and saves it to the configured directory or a custom path.
@@ -204,7 +204,7 @@ def capture_page_screenshot(url: str, output_path: str = "") -> str:
             out_dir = get_configured_output_dir()
             slug = _url_to_slug(url)
             output_path = str(out_dir / f"{slug}_preview.png")
-        saved_path = take_screenshot(url, output_path, full_page=True)
+        saved_path = await async_take_screenshot(url, output_path, full_page=True)
         return f"Full-page screenshot successfully captured and saved to: {saved_path}"
     except Exception as e:
         return f"Error capturing screenshot for {url}: {str(e)}"

@@ -83,18 +83,72 @@ En el archivo de configuración de MCP (ejemplo `mcp.json` o settings de la exte
 }
 ```
 
-### 4. Uso Directo en Terminal (Sin Agentes / Standalone)
-No necesitas obligatoriamente un agente para usarlo:
+### 4. Uso Directo en Terminal (Comando Global `design-extractor`)
+
+Puedes ejecutar `design-extractor` de forma global desde cualquier carpeta de tu terminal sin necesidad de escribir rutas complejas a Python:
+
 ```bash
-# Extraer una web y guardarla en tu carpeta configurada:
-python cli.py extract https://stripe.com
+# 1. Comprobar estado e integración en PATH:
+design-extractor status
 
-# Ver el estado y dashboard:
-python cli.py status
+# 2. Abrir asistente interactivo de configuración:
+design-extractor setup
 
-# Abrir el asistente interactivo de configuración:
-python cli.py setup
+# 3. Extraer una web y guardarla directamente:
+design-extractor extract https://stripe.com
+
+# 4. Vincular automáticamente con todos los clientes IA detectados:
+design-extractor install-agents
 ```
+
+---
+
+## ⚡ Comandos Personalizados y Flujos de Trabajo (Presets)
+
+Design Extractor permite definir atajos y flujos de trabajo reutilizables con tiempos de hidratación, directorios personalizados y opciones de captura preconfiguradas:
+
+### 1. Presets Nativos Incluidos:
+- **`quick`**: Extracción ultrarrápida sin captura de pantalla (`screenshot=false`, espera de 1s).
+  ```bash
+  design-extractor quick https://stripe.com
+  ```
+- **`full`**: Extracción completa de alta fidelidad con captura de pantalla y espera prolongada para SPAs/Next.js (`screenshot=true`, espera de 4s).
+  ```bash
+  design-extractor full https://linear.app
+  ```
+
+### 2. Gestión de Comandos Personalizados:
+```bash
+# Listar todos los presets disponibles:
+design-extractor custom list
+
+# Crear un nuevo comando personalizado:
+design-extractor custom add landing --desc "Flujo para landing pages interactivas" --wait 3
+
+# Ejecutar tu comando recién creado directamente:
+design-extractor landing https://supabase.com
+
+# Eliminar un comando personalizado:
+design-extractor custom delete landing
+```
+
+---
+
+## 🌐 Integración en PATH del Sistema
+
+Para tener el comando `design-extractor` disponible en cualquier terminal (PowerShell, CMD, Bash, Git Bash):
+
+```bash
+# Instalar shim global en tu PATH de usuario:
+design-extractor path install
+
+# Comprobar estado:
+design-extractor path status
+
+# O mediante pip editable:
+pip install -e .
+```
+*(También puedes instalarlo interactivamente seleccionando la opción `[5]` en `design-extractor setup`)*.
 
 ---
 
@@ -124,7 +178,7 @@ playwright install chromium
 ```
 
 ### 3. Asistente Interactivo de Configuración
-Para abrir la pantalla de configuración (estilo Moodle MCP):
+Para abrir la pantalla de configuración :
 
 - **En Windows:** Haz doble clic en `configurar.bat` o ejecuta:
   ```powershell
@@ -189,16 +243,20 @@ Cada extracción genera un archivo con directivas maestras listas para pasar a t
 
 ```text
 web-design-extractor-mcp/
-├── cli.py               # Punto de entrada unificado (setup, status, extract, serve)
+├── cli.py               # Punto de entrada unificado y ejecutor de atajos (design-extractor)
 ├── setup_wizard.py      # Asistente interactivo de terminal estilo Moodle MCP
-├── ui.py                # Componentes visuales y tablas renderizadas con Rich
+├── ui.py                # Componentes visuales, tablas y dashboard renderizados con Rich
+├── path_installer.py    # Integración global del comando en PATH (Windows/Linux/macOS)
+├── preset_manager.py    # Gestor de flujos de trabajo personalizados y presets
 ├── server.py            # Servidor MCP (FastMCP) con todas las herramientas expuestas
 ├── core_extractor.py    # Motor de análisis DOM, estilos computados y Playwright
 ├── config_manager.py    # Gestor de carpetas y persistencia de configuración
 ├── configurar.bat       # Lanzador rápido para terminal en Windows
+├── pyproject.toml       # Especificación de paquete estándar y entry point
 ├── requirements.txt     # Dependencias de Python
 ├── .gitignore           # Exclusiones de Git (entornos, temporales, logs)
 └── README.md            # Documentación completa
+
 ```
 
 ---

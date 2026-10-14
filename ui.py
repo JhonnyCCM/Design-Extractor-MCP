@@ -68,6 +68,31 @@ def show_dashboard(output_dir: Path, agents_status: Dict[str, Any]) -> None:
         "Playwright Chromium (Modo Headless)"
     )
 
+    # PATH command integration
+    from path_installer import is_path_installed
+    if is_path_installed():
+        status_table.add_row(
+            "Comando Global (PATH)",
+            "[green][OK] Instalado[/green]",
+            "[green]Ejecutable como 'design-extractor' desde cualquier terminal[/green]"
+        )
+    else:
+        status_table.add_row(
+            "Comando Global (PATH)",
+            "[yellow][!] No vinculado[/yellow]",
+            "[dim]Ejecuta 'design-extractor path install' o usa la opción del menú[/dim]"
+        )
+
+    # Custom commands / Presets
+    from preset_manager import get_all_presets
+    presets = get_all_presets()
+    preset_names = ", ".join(presets.keys())
+    status_table.add_row(
+        "Comandos / Presets",
+        f"[cyan]{len(presets)} listos[/cyan]",
+        f"[dim white]{preset_names}[/dim white]"
+    )
+
     console.print(Panel(
         status_table,
         title="[bold #38bdf8] ESTADO DEL MOTOR DE EXTRACCIÓN [/bold #38bdf8]",
@@ -142,7 +167,9 @@ def show_menu() -> str:
     menu_table.add_row("[2]", "Vincular automáticamente en todos los clientes y CLIs detectadas")
     menu_table.add_row("[3]", "Probar análisis de una web en vivo ahora mismo")
     menu_table.add_row("[4]", "Abrir carpeta de destino en el Explorador de Windows")
-    menu_table.add_row("[5]", "Ver guía de prompts y ejemplos para pasarle a tu agente")
+    menu_table.add_row("[5]", "Instalar o verificar comando global en PATH (design-extractor)")
+    menu_table.add_row("[6]", "Administrar comandos personalizados y presets de flujo de trabajo")
+    menu_table.add_row("[7]", "Ver guía de prompts y ejemplos para pasarle a tu agente")
     menu_table.add_row("[0]", "Salir")
 
     console.print(Panel(
@@ -152,5 +179,6 @@ def show_menu() -> str:
         box=box.ROUNDED
     ))
 
-    choice = console.input("[bold #38bdf8]Selecciona una opción [0-5]: [/bold #38bdf8]").strip()
+    choice = console.input("[bold #38bdf8]Selecciona una opción [0-7]: [/bold #38bdf8]").strip()
     return choice
+

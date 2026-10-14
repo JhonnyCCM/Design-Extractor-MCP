@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 
 BROWSER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -521,6 +522,100 @@ def take_screenshot(url: str, output_path: str, full_page: bool = True) -> str:
         page.screenshot(path=str(out_file), full_page=full_page)
         browser.close()
         return str(out_file)
+
+
+async def async_extract_page_design_data(url: str, wait_seconds: int = 2) -> Dict[str, Any]:
+    """Inspects a page using Playwright Async API and extracts comprehensive design data."""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            user_agent=BROWSER_USER_AGENT,
+            viewport={"width": 1440, "height": 900}
+        )
+        page = await context.new_page()
+        await page.goto(url, wait_until="domcontentloaded", timeout=40000)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=7000)
+        except Exception:
+            pass
+        await page.wait_for_timeout(wait_seconds * 1000)
+
+        data = await page.evaluate(EXTRACTION_JS)
+        await browser.close()
+        return data
+
+
+async def async_inspect_single_element(url: str, selector: str) -> Dict[str, Any]:
+    """Inspects a specific element on a page by CSS selector using Async API."""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(user_agent=BROWSER_USER_AGENT, viewport={"width": 1440, "height": 900})
+        page = await context.new_page()
+        await page.goto(url, wait_until="domcontentloaded", timeout=35000)
+        await page.wait_for_timeout(2000)
+
+        js = f"""(sel) => {{
+            const el = document.querySelector(sel);
+            if (!el) return {{ error: 'Element not found: ' + sel }};
+            const s = window.getComputedStyle(el);
+            const rgbToHex = (color) => {{
+                if (!color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)') return null;
+                const match = color.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+                if (!match) return color;
+                const r = parseInt(match[1]);
+                const g = parseInt(match[2]);
+                const b = parseInt(match[3]);
+                const a = match[4] !== undefined ? parseFloat(match[4]) : 1;
+                return a < 1 ? `rgba(${{r}}, ${{g}}, ${{b}}, ${{a}})` : "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+            }};
+
+            return {{
+                tagName: el.tagName.toLowerCase(),
+                className: el.className,
+                computedStyles: {{
+                    display: s.display,
+                    flexDirection: s.flexDirection,
+                    gridTemplateColumns: s.gridTemplateColumns,
+                    gap: s.gap,
+                    width: s.width,
+                    maxWidth: s.maxWidth,
+                    padding: s.padding,
+                    margin: s.margin,
+                    backgroundColor: rgbToHex(s.backgroundColor),
+                    color: rgbToHex(s.color),
+                    fontFamily: s.fontFamily,
+                    fontSize: s.fontSize,
+                    fontWeight: s.fontWeight,
+                    lineHeight: s.lineHeight,
+                    borderRadius: s.borderRadius,
+                    border: `${{s.borderWidth}} ${{s.borderStyle}} ${{rgbToHex(s.borderColor)}}`,
+                    boxShadow: s.boxShadow,
+                    backdropFilter: s.backdropFilter
+                }},
+                outerHTMLSample: el.outerHTML.slice(0, 500)
+            }};
+        }}"""
+
+        result = await page.evaluate(js, selector)
+        await browser.close()
+        return result
+
+
+async def async_take_screenshot(url: str, output_path: str, full_page: bool = True) -> str:
+    """Takes a full-page or viewport screenshot using Async API."""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(user_agent=BROWSER_USER_AGENT, viewport={"width": 1440, "height": 900})
+        page = await context.new_page()
+        await page.goto(url, wait_until="domcontentloaded", timeout=35000)
+        await page.wait_for_timeout(2500)
+
+        out_file = Path(output_path).resolve()
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        await page.screenshot(path=str(out_file), full_page=full_page)
+        await browser.close()
+        return str(out_file)
+
 
 
 def generate_agent_design_spec(data: Dict[str, Any], url: str) -> str:
