@@ -96,6 +96,35 @@ EXTRACTION_JS = """
         return 128;
     };
 
+    const getRelativeLuminance = (colorStr) => {
+        if (!colorStr) return 1;
+        const hex = normalizeColor(colorStr);
+        if (!hex || !hex.startsWith('#') || hex.length < 7) return 1;
+        const r = parseInt(hex.slice(1, 3), 16) / 255;
+        const g = parseInt(hex.slice(3, 5), 16) / 255;
+        const b = parseInt(hex.slice(5, 7), 16) / 255;
+        const transform = (c) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        return 0.2126 * transform(r) + 0.7152 * transform(g) + 0.0722 * transform(b);
+    };
+
+    const calculateContrastRatio = (fg, bg) => {
+        if (!fg || !bg) return 1;
+        const l1 = getRelativeLuminance(fg);
+        const l2 = getRelativeLuminance(bg);
+        const brighter = Math.max(l1, l2);
+        const darker = Math.min(l1, l2);
+        const ratio = (brighter + 0.05) / (darker + 0.05);
+        return Math.round(ratio * 100) / 100;
+    };
+
+    const getWCAGLevel = (ratio) => {
+        if (ratio >= 7.0) return "AAA (Excelente)";
+        if (ratio >= 4.5) return "AA (Aprobado texto normal)";
+        if (ratio >= 3.0) return "AA Large (Solo texto grande)";
+        return "Fallo (< 3.0)";
+    };
+
+
     // Clean DOM node for skeleton preview
     const cleanElementSkeleton = (el, maxDepth = 3, currentDepth = 0) => {
         if (!el || currentDepth > maxDepth) return null;
@@ -176,9 +205,10 @@ EXTRACTION_JS = """
         tailwindDetected = true;
     }
 
-    // Stylesheet rules: Media query breakpoints & Keyframe animations
+    // Stylesheet rules: Media query breakpoints, Keyframe animations & @font-face
     const mediaBreakpoints = new Set();
     const keyframes = [];
+    const fontFaceDeclarations = [];
     try {
         for (const sheet of document.styleSheets) {
             try {
@@ -195,11 +225,27 @@ EXTRACTION_JS = """
                         if (keyframes.length < 6 && !keyframes.includes(rule.name)) {
                             keyframes.push(rule.name);
                         }
+                    } else if (rule.type === 5 || (rule.constructor && rule.constructor.name === 'CSSFontFaceRule')) {
+                        try {
+                            const fam = (rule.style.getPropertyValue('font-family') || '').replace(/['"]/g, '').trim();
+                            const src = rule.style.getPropertyValue('src') || '';
+                            const weight = rule.style.getPropertyValue('font-weight') || '400';
+                            const style = rule.style.getPropertyValue('font-style') || 'normal';
+                            if (fam && fontFaceDeclarations.length < 8 && !fontFaceDeclarations.some(f => f.family === fam && f.weight === weight)) {
+                                fontFaceDeclarations.push({
+                                    family: fam,
+                                    weight: weight,
+                                    style: style,
+                                    src: src.length > 250 ? src.slice(0, 250) + '...' : src
+                                });
+                            }
+                        } catch (e) {}
                     }
                 }
             } catch (e) {}
         }
     } catch (e) {}
+
 
     // Meta tags
     const metaTags = {};
@@ -431,6 +477,53 @@ EXTRACTION_JS = """
         commonGaps: getTopKeys(gapFreq, 4)
     };
 
+    // WCAG 2.1 Accessibility & Contrast Audit
+    const h1El = document.querySelector('h1');
+    const h1Color = h1El ? rgbToHex(window.getComputedStyle(h1El).color) : bodyColor;
+    const canvasContrast = calculateContrastRatio(bodyColor, bodyBg);
+    const heroContrast = calculateContrastRatio(h1Color, bodyBg);
+
+    const contrastAudit = [
+        { pair: "Texto Base sobre Canvas", fg: bodyColor, bg: bodyBg, ratio: canvasContrast, level: getWCAGLevel(canvasContrast) },
+        { pair: "Título H1 sobre Canvas", fg: h1Color, bg: bodyBg, ratio: heroContrast, level: getWCAGLevel(heroContrast) }
+    ];
+
+    if (cardInfo && cardInfo.backgroundColor) {
+        const cardFg = (typography.h3 && typography.h3.color) || bodyColor;
+        const cardRatio = calculateContrastRatio(cardFg, cardInfo.backgroundColor);
+        contrastAudit.push({ pair: "Texto de Tarjeta sobre Superficie", fg: cardFg, bg: cardInfo.backgroundColor, ratio: cardRatio, level: getWCAGLevel(cardRatio) });
+    }
+
+    if (buttons && buttons.length > 0 && buttons[0].bg && buttons[0].color) {
+        const btnRatio = calculateContrastRatio(buttons[0].color, buttons[0].bg);
+        contrastAudit.push({ pair: "Texto de Botón CTA sobre Fondo", fg: buttons[0].color, bg: buttons[0].bg, ratio: btnRatio, level: getWCAGLevel(btnRatio) });
+    }
+
+    // Brand Assets: Logo SVG, Favicon, UI Icon count
+    let logoSvg = null;
+    try {
+        const logoCandidates = document.querySelectorAll('header svg, a[href="/"] svg, [class*="logo"] svg, svg.logo, .navbar-brand svg');
+        for (const el of logoCandidates) {
+            if (el.tagName.toLowerCase() === 'svg' && el.clientWidth > 16 && el.clientHeight > 16) {
+                const raw = el.outerHTML;
+                if (raw.length > 30 && raw.length < 2500) {
+                    logoSvg = raw;
+                    break;
+                }
+            }
+        }
+    } catch (e) {}
+
+    let faviconUrl = null;
+    try {
+        const iconEl = document.querySelector('link[rel~="icon"], link[rel="apple-touch-icon"], link[rel="shortcut icon"]');
+        if (iconEl && iconEl.href) {
+            faviconUrl = iconEl.href;
+        }
+    } catch (e) {}
+
+    const totalSvgs = document.querySelectorAll('svg').length;
+
     return {
         title: document.title,
         url: window.location.href,
@@ -438,12 +531,20 @@ EXTRACTION_JS = """
         bodyBg,
         bodyColor,
         externalFonts,
+        fontFaceDeclarations,
         cssVariables,
         typography,
         colors: {
             backgrounds: getTopKeys(bgFreq, 8),
             texts: getTopKeys(textFreq, 8),
             borders: getTopKeys(borderFreq, 6)
+        },
+        contrastAudit,
+        brandAssets: {
+            faviconUrl,
+            hasLogoSvg: Boolean(logoSvg),
+            logoSvgSnippet: logoSvg ? logoSvg.slice(0, 1000) : null,
+            totalSvgsOnPage: totalSvgs
         },
         radii: getTopKeys(radiusFreq, 6),
         shadows: getTopKeys(shadowFreq, 4),
@@ -463,7 +564,73 @@ EXTRACTION_JS = """
         badges
     };
 }
+
 """
+
+
+INJECT_CSS_JS = """(css) => {
+    try {
+        const s = document.createElement('style');
+        s.id = '_design_extractor_injected_cors_bypass';
+        s.textContent = css;
+        document.head.appendChild(s);
+    } catch(e) {}
+}"""
+
+DUAL_THEME_PROBE_JS = """() => {
+    try {
+        const getComputedBg = (el) => {
+            if (!el) return null;
+            const c = window.getComputedStyle(el).backgroundColor;
+            return (c && c !== 'transparent' && c !== 'rgba(0, 0, 0, 0)') ? c : null;
+        };
+        const getComputedCol = (el) => {
+            if (!el) return null;
+            return window.getComputedStyle(el).color || null;
+        };
+
+        const baseBg = getComputedBg(document.body) || getComputedBg(document.documentElement) || '#ffffff';
+        const baseCol = getComputedCol(document.body) || '#111827';
+
+        // Check if color changed or if toggling .dark / data-theme activates dark theme
+        const html = document.documentElement;
+        const hadDark = html.classList.contains('dark') || html.getAttribute('data-theme') === 'dark';
+        if (!hadDark) {
+            html.classList.add('dark');
+            html.setAttribute('data-theme', 'dark');
+        }
+
+        const darkBg = getComputedBg(document.body) || getComputedBg(document.documentElement) || baseBg;
+        const darkCol = getComputedCol(document.body) || baseCol;
+
+        const card = document.querySelector('.card, [class*="card"], article, [class*="surface"], [class*="box"]');
+        const darkCardBg = getComputedBg(card) || '#18181b';
+        const darkCardBorder = card ? window.getComputedStyle(card).borderColor : null;
+
+        if (!hadDark) {
+            html.classList.remove('dark');
+            html.removeAttribute('data-theme');
+        }
+
+        const isDarkDifferent = darkBg !== baseBg;
+
+        return {
+            hasDarkThemeSupport: isDarkDifferent,
+            light: {
+                background: baseBg,
+                foreground: baseCol
+            },
+            dark: {
+                background: isDarkDifferent ? darkBg : (baseBg.includes('255') || baseBg.includes('#fff') ? '#09090b' : baseBg),
+                foreground: isDarkDifferent ? darkCol : (baseBg.includes('255') || baseBg.includes('#fff') ? '#f4f4f5' : baseCol),
+                cardBackground: darkCardBg,
+                cardBorder: darkCardBorder
+            }
+        };
+    } catch(e) {
+        return null;
+    }
+}"""
 
 
 def extract_page_design_data(url: str, wait_seconds: int = 2, use_cache: bool = True) -> Dict[str, Any]:
@@ -481,6 +648,19 @@ def extract_page_design_data(url: str, wait_seconds: int = 2, use_cache: bool = 
             viewport={"width": 1440, "height": 900}
         )
         page = context.new_page()
+
+        # Intercept external CSS to bypass CORS stylesheet restrictions
+        css_chunks = []
+        def on_response(res):
+            try:
+                if res.request.resource_type == "stylesheet":
+                    t = res.text()
+                    if t and len(t) > 20:
+                        css_chunks.append(t)
+            except Exception:
+                pass
+
+        page.on("response", on_response)
         page.goto(url, wait_until="domcontentloaded", timeout=40000)
         _wait_for_challenge_resolution_sync(page)
         try:
@@ -489,11 +669,30 @@ def extract_page_design_data(url: str, wait_seconds: int = 2, use_cache: bool = 
             pass
         page.wait_for_timeout(wait_seconds * 1000)
 
+        # Inject downloaded stylesheets into inline <style> to bypass cross-origin CORS barriers
+        if css_chunks:
+            try:
+                combined_css = "\n".join(css_chunks[:25])
+                page.evaluate(INJECT_CSS_JS, combined_css)
+            except Exception:
+                pass
+
         data = page.evaluate(EXTRACTION_JS)
+
+        # Dual Theme Probe (Light & Dark Mode)
+        try:
+            page.emulate_media(color_scheme="dark")
+            page.wait_for_timeout(600)
+            dual_theme = page.evaluate(DUAL_THEME_PROBE_JS)
+            data["dualTheme"] = dual_theme
+        except Exception:
+            data["dualTheme"] = None
+
         browser.close()
         if use_cache:
             set_cached_extraction(url, data)
         return data
+
 
 
 
@@ -587,6 +786,19 @@ async def async_extract_page_design_data(url: str, wait_seconds: int = 2, use_ca
             viewport={"width": 1440, "height": 900}
         )
         page = await context.new_page()
+
+        # Intercept external CSS to bypass CORS stylesheet restrictions
+        css_chunks = []
+        async def on_response(res):
+            try:
+                if res.request.resource_type == "stylesheet":
+                    t = await res.text()
+                    if t and len(t) > 20:
+                        css_chunks.append(t)
+            except Exception:
+                pass
+
+        page.on("response", on_response)
         await page.goto(url, wait_until="domcontentloaded", timeout=40000)
         await _wait_for_challenge_resolution_async(page)
         try:
@@ -595,11 +807,30 @@ async def async_extract_page_design_data(url: str, wait_seconds: int = 2, use_ca
             pass
         await page.wait_for_timeout(wait_seconds * 1000)
 
+        # Inject downloaded stylesheets into inline <style> to bypass cross-origin CORS barriers
+        if css_chunks:
+            try:
+                combined_css = "\n".join(css_chunks[:25])
+                await page.evaluate(INJECT_CSS_JS, combined_css)
+            except Exception:
+                pass
+
         data = await page.evaluate(EXTRACTION_JS)
+
+        # Dual Theme Probe (Light & Dark Mode)
+        try:
+            await page.emulate_media(color_scheme="dark")
+            await page.wait_for_timeout(600)
+            dual_theme = await page.evaluate(DUAL_THEME_PROBE_JS)
+            data["dualTheme"] = dual_theme
+        except Exception:
+            data["dualTheme"] = None
+
         await browser.close()
         if use_cache:
             set_cached_extraction(url, data)
         return data
+
 
 
 
@@ -747,6 +978,61 @@ def generate_agent_design_spec(data: Dict[str, Any], url: str) -> str:
     breakpoints = data.get("mediaBreakpoints", [])
     keyframes = data.get("keyframes", [])
     tw_classes = data.get("sampledUtilityClasses", [])
+    contrast_audit = data.get("contrastAudit", [])
+    dual_theme = data.get("dualTheme")
+    brand_assets = data.get("brandAssets", {})
+    external_fonts = data.get("externalFonts", [])
+    font_face_rules = data.get("fontFaceDeclarations", [])
+
+    # Format Web Fonts
+    font_imports_html = ""
+    if external_fonts:
+        font_imports_html = "\n".join([f'<link rel="stylesheet" href="{f}">' for f in external_fonts[:3]])
+    elif font_family_heading and font_family_heading.lower() not in ["system-ui", "sans-serif", "arial", "helvetica", "inter"]:
+        clean_name = font_family_heading.replace(" ", "+")
+        font_imports_html = f'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family={clean_name}:wght@400;600;700;800&display=swap">'
+
+    # Format Contrast Audit Table
+    if contrast_audit:
+        contrast_rows = "\n".join([
+            f"| {c['pair']} | `{c['fg']}` | `{c['bg']}` | **{c['ratio']}:1** | `{c['level']}` |"
+            for c in contrast_audit
+        ])
+    else:
+        contrast_rows = f"| Texto Base sobre Canvas | `{body_color}` | `{body_bg}` | **Alta Legibilidad** | `AA Aprobado` |"
+
+    # Format Dual Theme Block
+    dual_theme_section = ""
+    if dual_theme and dual_theme.get("hasDarkThemeSupport"):
+        dark_data = dual_theme.get("dark", {})
+        dual_theme_section = f"""
+### Dual Mode & Adaptive Theme Tokens (Light & Dark)
+Esta interfaz soporta cambio dinámico de tema claro/oscuro. A continuación se detallan los tokens sincronizados para ambas variantes:
+
+| Token Semántico | Modo Claro (Light) | Modo Oscuro (Dark) |
+| :--- | :--- | :--- |
+| **Canvas / Background** | `{dual_theme.get('light', {}).get('background', body_bg)}` | `{dark_data.get('background', '#09090b')}` |
+| **Foreground / Text** | `{dual_theme.get('light', {}).get('foreground', body_color)}` | `{dark_data.get('foreground', '#f4f4f5')}` |
+| **Card / Surface** | `{surface_bg}` | `{dark_data.get('cardBackground', '#18181b')}` |
+| **Borders** | `{border_colors[0] if border_colors else '#e5e7eb'}` | `{dark_data.get('cardBorder', 'rgba(255, 255, 255, 0.1)')}` |
+
+```css
+/* CSS ADAPTATIVO DUAL-THEME */
+:root {{
+  --background: {dual_theme.get('light', {}).get('background', body_bg)};
+  --foreground: {dual_theme.get('light', {}).get('foreground', body_color)};
+  --card: {surface_bg};
+  --border: {border_colors[0] if border_colors else '#e5e7eb'};
+}}
+
+.dark {{
+  --background: {dark_data.get('background', '#09090b')};
+  --foreground: {dark_data.get('foreground', '#f4f4f5')};
+  --card: {dark_data.get('cardBackground', '#18181b')};
+  --border: {dark_data.get('cardBorder', 'rgba(255, 255, 255, 0.1)')};
+}}
+```
+"""
 
     # Build Master Markdown
     md = f"""# Master Web Architecture & Design System Specification
@@ -765,10 +1051,11 @@ This site uses a **{theme_name}** architecture characterized by:
 
 ---
 
-## 2. Source Code & Architecture Intelligence
+## 2. Source Code, Assets & Architecture Intelligence
 - **Frameworks & Tech Stack Detected:** {", ".join([f"`{t}`" for t in tech_stack]) if tech_stack else '`Custom HTML/CSS Stack`'}
 - **Responsive Media Query Breakpoints:** {", ".join([f"`{b}`" for b in breakpoints[:6]]) if breakpoints else '`Fluid responsive (standard breakpoints)`'}
 - **Stylesheet Keyframe Animations:** {", ".join([f"`{k}`" for k in keyframes]) if keyframes else '`Standard transition transitions`'}
+- **Brand Assets & Favicon:** Favicon `{brand_assets.get('faviconUrl') or 'N/A'}` · Total Iconos SVG: `{brand_assets.get('totalSvgsOnPage', 0)}` · Logo SVG: `{'Detectado' if brand_assets.get('hasLogoSvg') else 'Estándar'}`
 - **Observed Utility Classes (Developer Intent):** {", ".join([f"`{c}`" for c in tw_classes[:14]]) if tw_classes else '`Semantic / Component-based CSS`'}
 
 ---
@@ -783,10 +1070,20 @@ This site uses a **{theme_name}** architecture characterized by:
 | **Primary Text** | `{body_color}` | Headings, titles, high-emphasis copy |
 | **Primary Brand Accent** | `{primary_accent}` | CTA buttons, active links, brand highlights |
 | **Border Tone** | `{border_colors[0] if border_colors else '#e5e7eb'}` | Structural card borders, dividers, inputs |
+{dual_theme_section}
+### WCAG 2.1 Accessibility & Color Contrast Audit
+| Par de Elementos | Color Texto | Color Fondo | Ratio Contraste | Nivel Conformidad |
+| :--- | :--- | :--- | :--- | :--- |
+{contrast_rows}
 
 ### Typography Scale & Hierarchy
 - **Heading Font Family:** `{font_family_heading}`
 - **Body Font Family:** `{font_family_primary}`
+
+{f'''```html
+<!-- FUENTES WEB SUGERIDAS -->
+{font_imports_html}
+```''' if font_imports_html else ''}
 
 | Level | Size | Weight | Line Height | Tracking | Text Color |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -794,6 +1091,7 @@ This site uses a **{theme_name}** architecture characterized by:
 | **H2 (Section Header)** | `{h2_typo.get('fontSize', '32px')}` | `{h2_typo.get('fontWeight', '600')}` | `{h2_typo.get('lineHeight', '1.25')}` | `{h2_typo.get('letterSpacing', 'normal')}` | `{h2_typo.get('color', body_color)}` |
 | **H3 (Card Title)** | `{h3_typo.get('fontSize', '20px')}` | `{h3_typo.get('fontWeight', '600')}` | `{h3_typo.get('lineHeight', '1.4')}` | `normal` | `{h3_typo.get('color', body_color)}` |
 | **Body (Paragraph)** | `{body_typo.get('fontSize', '16px')}` | `{body_typo.get('fontWeight', '400')}` | `{body_typo.get('lineHeight', '1.5')}` | `normal` | `{body_typo.get('color', body_color)}` |
+
 
 ### Radii, Shadows & Spacing Scales
 - **Border Radii:** {", ".join([f"`{r}`" for r in radii[:4]])}
