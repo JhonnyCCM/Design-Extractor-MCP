@@ -1,24 +1,29 @@
 # Design Extractor MCP 🌐✨
-> **Model Context Protocol (MCP) Server & CLI para ingeniería inversa de sistemas de diseño, estructuras de contenedores y generación de directivas para Agentes de IA.**
+> **Model Context Protocol (MCP) Server & CLI para ingeniería inversa de sistemas de diseño, estructuras de contenedores, tokens W3C DTCG y directivas para Agentes de IA.**
 
 [![MCP Standard](https://img.shields.io/badge/MCP-Protocol%201.0-blue.svg)](https://modelcontextprotocol.io)
+[![Version](https://img.shields.io/badge/Version-1.3.0-brightgreen.svg)](https://github.com/JhonnyCCM/Design-Extractor-MCP)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-green.svg)](https://python.org)
 [![Playwright](https://img.shields.io/badge/Engine-Playwright%20Chromium-orange.svg)](https://playwright.dev)
-[![Rich Terminal](https://img.shields.io/badge/UI-Rich%20Terminal-purple.svg)](https://github.com/Textualize/rich)
+[![W3C DTCG](https://img.shields.io/badge/Tokens-W3C%20DTCG%20Standard-purple.svg)](https://design-tokens.github.io/community-group/format/)
 
 ---
 
 ## 🎯 ¿Qué hace este proyecto?
 
-**Design Extractor MCP** es un servidor que navega cualquier página web en tiempo real usando un navegador headless (Playwright) para inspeccionar tanto el código fuente como los estilos computados del DOM.
+**Design Extractor MCP** es un motor de ingeniería inversa que navega cualquier página web en tiempo real usando un navegador headless (Playwright) para inspeccionar tanto el código fuente como los estilos computados del DOM.
 
 Extrae automáticamente:
 1. **🎨 Paleta y Tokens de Color:** Fondos de canvas, superficies/tarjetas, colores de texto (alto contraste y atenuado), acento de marca y bordes, con normalización automática a HEX/RGBA.
-2. **🔤 Sistema Tipográfico Completo:** Familias tipográficas para títulos y cuerpo, jerarquía exacta (**H1, H2, H3, H4 y Párrafos**) con tamaños en píxeles, pesos (`font-weight`), interlineados (`line-height`) y espaciado de letras (`letter-spacing`).
-3. **📐 Arquitectura de Layout y Divs:** Anchuras máximas de contenedor (`max-w-*`), espaciado rítmico de secciones (`py-16` / `py-24`), patrones de rejilla (`CSS Grid` y `Flexbox`), y esqueletos estructurales HTML limpios de **Header**, **Hero**, **Cards** y **Botones**.
-4. **🔍 Inteligencia de Código Fuente:** Detección de frameworks en el HTML (**Next.js, React, Vue, Astro, Webflow, Shopify, WordPress, Tailwind CSS**), puntos de interrupción responsivos reales (`@media` del CSS original) y animaciones `@keyframes`.
-5. **🤖 Prompt Maestro para Agentes (Master Directives):** Genera una hoja de instrucciones exhaustiva en Markdown (`.md`) lista para copiar y pegar a cualquier Agente de IA para que replique el diseño con 100% de fidelidad visual.
-6. **📸 Capturas de Pantalla:** Captura automáticamente una imagen completa en alta resolución (`.png`) para referencia visual.
+2. **🌓 Probeta Dual-Theme (Modo Claro & Oscuro):** Emula automáticamente `prefers-color-scheme: dark` e inspecciona clases `.dark` o `data-theme` para sincronizar tokens semánticos en ambos modos.
+3. **♿ Auditoría de Accesibilidad WCAG 2.1:** Cálculo matemático de luminancia relativa y contrast ratios de color (niveles AA / AAA) entre pares de texto y fondo.
+4. **📱 Matriz Responsiva Multi-Viewport:** Probeta activa en vivo probando Desktop (1440px), Tablet (768px) y Mobile (375px), detectando la transformación de títulos, padding, comportamiento de grid y menús hamburguesa.
+5. **💎 Tokens W3C DTCG Estándar (`design-tokens.json`):** Exportación en el formato estándar de la W3C (*Design Tokens Community Group*), compatible directamente con Figma Tokens, Style Dictionary y Tailwind CSS.
+6. **🔤 Sistema Tipográfico y Fuentes Web:** Jerarquía exacta (**H1, H2, H3 y Párrafos**) con tamaños, pesos, interlineados, tracking y snippets de importación de Google Fonts / `@font-face`.
+7. **📐 Arquitectura de Layout y Divs:** Anchuras máximas de contenedor (`max-w-*`), espaciado rítmico (`py-16`), y esqueletos estructurales HTML limpios de **Header**, **Hero**, **Cards** y **Botones**.
+8. **🔐 Soporte de Sesiones Autenticadas (Moodle, SaaS, SSO):** Grabador interactivo de login (`design-extractor login <url>`) y soporte de cookies (`--cookie`) para auditar plataformas que requieren usuario y contraseña.
+9. **🤖 Prompt Maestro para Agentes (Master Directives):** Genera una hoja de instrucciones exhaustiva en Markdown (`.md`) lista para copiar y pegar a cualquier Agente de IA para replicar el diseño.
+10. **📸 Capturas de Pantalla:** Captura automáticamente una imagen completa en alta resolución (`.png`) para referencia visual.
 
 ---
 
@@ -91,16 +96,25 @@ Puedes ejecutar `design-extractor` de forma global desde cualquier carpeta de tu
 # 1. Comprobar estado e integración en PATH:
 design-extractor status
 
-# 2. Abrir asistente interactivo de configuración:
+# 2. Abrir asistente interactivo de configuración y dashboard:
 design-extractor setup
 
-# 3. Extraer una web y guardarla directamente:
+# 3. Extraer una web pública y guardar .md, .json y .png:
 design-extractor extract https://stripe.com
 
-# 4. Vincular automáticamente con todos los clientes IA detectados:
+# 4. Iniciar sesión interactiva en una web protegida (Moodle, SaaS, SSO):
+design-extractor login https://moodle.miuniversidad.edu/login/index.php -o auth.json
+
+# 5. Extraer una página privada usando la sesión guardada:
+design-extractor extract https://moodle.miuniversidad.edu/mod/assign/view.php?id=123 -s auth.json
+
+# 6. O pasar la cookie de sesión directamente:
+design-extractor extract https://moodle.miuniversidad.edu/my -c "MoodleSession=abc123xyz"
+
+# 7. Vincular automáticamente con todos los clientes IA detectados:
 design-extractor install-agents
 
-# 5. Comprobar o descargar actualizaciones:
+# 8. Comprobar o descargar actualizaciones:
 design-extractor check-update
 design-extractor update
 ```
@@ -211,11 +225,16 @@ Para abrir la pantalla de configuración :
   ```
 
 Desde este menú interactivo puedes:
-- `[1]` Cambiar la carpeta permanente donde se guardan tus `.md` y `.png`.
-- `[2]` Probar la extracción en vivo de cualquier URL con barra de progreso.
-- `[3]` Abrir la carpeta de destino en el Explorador de archivos.
-- `[4]` Ver la guía de prompts para agentes.
-- `[5]` Comprobar el estado de registro en `mcp_config.json`.
+- `[1]` Cambiar la carpeta permanente donde se guardan tus `.md`, `.json` y `.png`.
+- `[2]` Vincular automáticamente en todos los clientes IA y CLIs detectadas.
+- `[3]` Probar la extracción en vivo de cualquier URL (pública o autenticada).
+- `[4]` Abrir la carpeta de destino en el Explorador de archivos de Windows.
+- `[5]` Instalar o verificar comando global en PATH (`design-extractor`).
+- `[6]` Administrar comandos personalizados y presets de flujo de trabajo.
+- `[7]` Ver la guía de prompts y ejemplos para pasarle a tu agente de IA.
+- `[8]` Buscar o instalar actualizaciones automáticas desde GitHub (Auto-Update).
+- `[9]` Iniciar sesión interactiva en un sitio web y guardar credenciales (`auth.json`).
+- `[0]` Salir del asistente.
 
 ---
 
@@ -225,12 +244,13 @@ Cuando un Agente de IA se conecta a este servidor, tiene acceso a las siguientes
 
 | Herramienta | Parámetros | Descripción |
 | :--- | :--- | :--- |
-| **`extract_design_system`** | `url` *(str)*, `output_file` *(opcional)* | Visita la web, extrae el sistema completo, guarda el archivo `.md` y la captura `.png` en la carpeta configurada, y devuelve la hoja de especificaciones. |
-| **`inspect_component`** | `url` *(str)*, `selector` *(str)* | Inspecciona un elemento específico por selector CSS (ej. `header`, `.pricing-card`, `button.cta`) devolviendo sus dimensiones exactas, bordes y HTML. |
-| **`generate_tailwind_theme`** | `url` *(str)* | Extrae los tokens de la página y devuelve un bloque listo para copiar en `tailwind.config.js`. |
-| **`inspect_page_source`** | `url` *(str)* | Realiza auditoría del código fuente: frameworks detectados, breakpoints `@media` y clases de utilidad. |
-| **`capture_page_screenshot`** | `url` *(str)*, `output_path` *(opcional)* | Captura una imagen de alta resolución de la página completa. |
-| **`set_output_directory`** | `path` *(str)* | Actualiza y persiste la carpeta de guardado de los archivos. |
+| **`extract_design_system`** | `url`, `output_file`, `storage_state`, `cookie` | Visita la web, extrae el sistema completo, guarda el archivo `.md`, los tokens W3C `.json` y la captura `.png`, y devuelve la especificación maestra. |
+| **`extract_design_tokens`** | `url`, `output_file`, `storage_state`, `cookie` | Extrae y guarda tokens de diseño estándar W3C DTCG en formato JSON compatible con Figma y Style Dictionary. |
+| **`inspect_component`** | `url`, `selector`, `storage_state`, `cookie` | Inspecciona un elemento específico por selector CSS (ej. `header`, `.pricing-card`, `button.cta`) devolviendo sus dimensiones exactas, bordes y HTML. |
+| **`generate_tailwind_theme`** | `url`, `storage_state`, `cookie` | Extrae los tokens de la página y devuelve un bloque listo para copiar en `tailwind.config.js`. |
+| **`inspect_page_source`** | `url`, `storage_state`, `cookie` | Realiza auditoría del código fuente: frameworks detectados, breakpoints `@media` y clases de utilidad. |
+| **`capture_page_screenshot`** | `url`, `output_path`, `storage_state`, `cookie` | Captura una imagen de alta resolución de la página completa. |
+| **`set_output_directory`** | `path` | Actualiza y persiste la carpeta de guardado de los archivos. |
 | **`get_output_directory`** | *(ninguno)* | Devuelve la ruta de la carpeta activa actual. |
 | **`check_for_updates`** | *(ninguno)* | Comprueba si existe una versión más reciente en GitHub. |
 | **`update_server`** | *(ninguno)* | Descarga automáticamente la última versión desde GitHub y actualiza dependencias. |

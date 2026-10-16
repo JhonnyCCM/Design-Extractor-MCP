@@ -9,7 +9,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from playwright.sync_api import sync_playwright
 from playwright.async_api import async_playwright
 
@@ -23,6 +23,48 @@ BROWSER_LAUNCH_ARGS = [
     "--no-sandbox",
     "--disable-setuid-sandbox"
 ]
+
+
+def _parse_cookie_arg(cookie_arg: Any, target_url: str) -> List[Dict[str, Any]]:
+    """
+    Parses a cookie string (e.g. 'MoodleSession=abc; user=123') or list of dicts
+    into Playwright-compatible cookie dictionaries.
+    """
+    from urllib.parse import urlparse
+    if not cookie_arg:
+        return []
+    if isinstance(cookie_arg, list):
+        return cookie_arg
+    if isinstance(cookie_arg, dict):
+        return [cookie_arg]
+
+    parsed_url = urlparse(target_url)
+    domain = parsed_url.hostname or "localhost"
+
+    cookies = []
+    if isinstance(cookie_arg, str):
+        stripped = cookie_arg.strip()
+        if stripped.startswith("[") or stripped.startswith("{"):
+            try:
+                loaded = json.loads(stripped)
+                if isinstance(loaded, list):
+                    return loaded
+                elif isinstance(loaded, dict):
+                    return [loaded]
+            except Exception:
+                pass
+        parts = [p.strip() for p in stripped.split(";") if p.strip()]
+        for p in parts:
+            if "=" in p:
+                name, val = p.split("=", 1)
+                cookies.append({
+                    "name": name.strip(),
+                    "value": val.strip(),
+                    "domain": domain,
+                    "path": "/"
+                })
+    return cookies
+
 
 
 def _wait_for_challenge_resolution_sync(page, max_seconds: int = 12):
@@ -632,9 +674,86 @@ DUAL_THEME_PROBE_JS = """() => {
     }
 }"""
 
+RESPONSIVE_VIEWPORT_PROBE_JS = """() => {
+    try {
+        const getComputed = (el, prop) => el ? window.getComputedStyle(el).getPropertyValue(prop) : null;
+        const h1 = document.querySelector('h1');
+        const h2 = document.querySelector('h2');
+        const nav = document.querySelector('header nav, nav, [role="navigation"]');
+        const hamburger = document.querySelector('[aria-label*="menu" i], [aria-label*="navigation" i], button.hamburger, .menu-toggle, [class*="hamburger"], [class*="mobile-menu"], button[aria-expanded]');
+        const container = document.querySelector('main, .container, [class*="container"], [class*="max-w-"]');
+        const grid = document.querySelector('[class*="grid"], [style*="grid"]');
 
-def extract_page_design_data(url: str, wait_seconds: int = 2, use_cache: bool = True) -> Dict[str, Any]:
+        const isVisible = (el) => {
+            if (!el) return false;
+            const style = window.getComputedStyle(el);
+            return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0' && el.offsetWidth > 0;
+        };
+
+        const gridCols = grid ? (getComputed(grid, 'grid-template-columns') || '') : '';
+        const colCount = gridCols ? gridCols.split('px').length - 1 : 0;
+
+        return {
+            windowWidth: window.innerWidth,
+            h1FontSize: h1 ? getComputed(h1, 'font-size') : null,
+            h2FontSize: h2 ? getComputed(h2, 'font-size') : null,
+            containerPadding: container ? getComputed(container, 'padding-left') : null,
+            isNavVisible: isVisible(nav),
+            isHamburgerVisible: isVisible(hamburger),
+            navigationMode: isVisible(hamburger) ? 'Colapsada (Menú Hamburguesa)' : (isVisible(nav) ? 'Barra Completa Visible' : 'Minimalista / Oculta'),
+            gridSummary: colCount > 1 ? `${colCount} Columnas` : (colCount === 1 ? '1 Columna (Stack)' : 'Fluido / Auto')
+        };
+    } catch(e) {
+        return null;
+    }
+}"""
+
+
+def save_login_session(url: str, output_path: str = "auth.json", timeout_seconds: int = 180) -> str:
+    """
+    Launches a visible Chromium browser (headless=False) so the user can log in
+    interactively to private platforms (Moodle, SaaS dashboards, SSO, Google auth).
+    Once logged in, the complete session storage state (cookies + localStorage)
+    is saved to a JSON file for subsequent headless automated extractions.
+    """
+    ensure_browser_ready()
+    out_file = Path(output_path).resolve()
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False, args=BROWSER_LAUNCH_ARGS)
+        context = browser.new_context(
+            user_agent=BROWSER_USER_AGENT,
+            viewport={"width": 1280, "height": 800}
+        )
+        page = context.new_page()
+        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
+        print(f"\n[!] Ventana de navegador abierta en: {url}")
+        print("[!] Inicia sesión en la plataforma con tus credenciales (incluso 2FA / SSO / Moodle).")
+        print("[!] Cuando hayas iniciado sesión y veas la interfaz privada, presiona ENTER aquí...")
+        try:
+            input()
+        except EOFError:
+            page.wait_for_timeout(10000)
+
+        context.storage_state(path=str(out_file))
+        browser.close()
+
+    return str(out_file)
+
+
+def extract_page_design_data(
+    url: str,
+    wait_seconds: int = 2,
+    use_cache: bool = True,
+    storage_state: Optional[str] = None,
+    cookies: Optional[Union[str, List[Dict[str, Any]]]] = None
+) -> Dict[str, Any]:
     """Inspects a page using Playwright and extracts comprehensive design data."""
+    if storage_state or cookies:
+        use_cache = False
+
     if use_cache:
         cached = get_cached_extraction(url)
         if cached:
@@ -643,10 +762,22 @@ def extract_page_design_data(url: str, wait_seconds: int = 2, use_cache: bool = 
     ensure_browser_ready()
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context = browser.new_context(
-            user_agent=BROWSER_USER_AGENT,
-            viewport={"width": 1440, "height": 900}
-        )
+        context_kwargs = {
+            "user_agent": BROWSER_USER_AGENT,
+            "viewport": {"width": 1440, "height": 900}
+        }
+        if storage_state and Path(storage_state).exists():
+            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+
+        context = browser.new_context(**context_kwargs)
+        if cookies:
+            parsed_cookies = _parse_cookie_arg(cookies, url)
+            if parsed_cookies:
+                try:
+                    context.add_cookies(parsed_cookies)
+                except Exception:
+                    pass
+
         page = context.new_page()
 
         # Intercept external CSS to bypass CORS stylesheet restrictions
@@ -682,11 +813,42 @@ def extract_page_design_data(url: str, wait_seconds: int = 2, use_cache: bool = 
         # Dual Theme Probe (Light & Dark Mode)
         try:
             page.emulate_media(color_scheme="dark")
-            page.wait_for_timeout(600)
+            page.wait_for_timeout(500)
             dual_theme = page.evaluate(DUAL_THEME_PROBE_JS)
             data["dualTheme"] = dual_theme
         except Exception:
             data["dualTheme"] = None
+
+        # Multi-Viewport Responsive Matrix Probe
+        try:
+            desktop_probe = page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+        except Exception:
+            desktop_probe = None
+
+        try:
+            page.set_viewport_size({"width": 768, "height": 1024})
+            page.wait_for_timeout(350)
+            tablet_probe = page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+        except Exception:
+            tablet_probe = None
+
+        try:
+            page.set_viewport_size({"width": 375, "height": 812})
+            page.wait_for_timeout(350)
+            mobile_probe = page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+        except Exception:
+            mobile_probe = None
+
+        try:
+            page.set_viewport_size({"width": 1440, "height": 900})
+        except Exception:
+            pass
+
+        data["responsiveMatrix"] = {
+            "desktop": desktop_probe,
+            "tablet": tablet_probe,
+            "mobile": mobile_probe
+        }
 
         browser.close()
         if use_cache:
@@ -694,13 +856,27 @@ def extract_page_design_data(url: str, wait_seconds: int = 2, use_cache: bool = 
         return data
 
 
-
-
-def inspect_single_element(url: str, selector: str) -> Dict[str, Any]:
+def inspect_single_element(
+    url: str,
+    selector: str,
+    storage_state: Optional[str] = None,
+    cookies: Optional[Union[str, List[Dict[str, Any]]]] = None
+) -> Dict[str, Any]:
     """Inspects a specific element on a page by CSS selector."""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context = browser.new_context(user_agent=BROWSER_USER_AGENT, viewport={"width": 1440, "height": 900})
+        context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
+        if storage_state and Path(storage_state).exists():
+            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+        context = browser.new_context(**context_kwargs)
+        if cookies:
+            parsed = _parse_cookie_arg(cookies, url)
+            if parsed:
+                try:
+                    context.add_cookies(parsed)
+                except Exception:
+                    pass
+
         page = context.new_page()
         page.goto(url, wait_until="domcontentloaded", timeout=35000)
         _wait_for_challenge_resolution_sync(page)
@@ -753,11 +929,28 @@ def inspect_single_element(url: str, selector: str) -> Dict[str, Any]:
         return result
 
 
-def take_screenshot(url: str, output_path: str, full_page: bool = True) -> str:
+def take_screenshot(
+    url: str,
+    output_path: str,
+    full_page: bool = True,
+    storage_state: Optional[str] = None,
+    cookies: Optional[Union[str, List[Dict[str, Any]]]] = None
+) -> str:
     """Takes a full-page or viewport screenshot of a webpage."""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context = browser.new_context(user_agent=BROWSER_USER_AGENT, viewport={"width": 1440, "height": 900})
+        context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
+        if storage_state and Path(storage_state).exists():
+            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+        context = browser.new_context(**context_kwargs)
+        if cookies:
+            parsed = _parse_cookie_arg(cookies, url)
+            if parsed:
+                try:
+                    context.add_cookies(parsed)
+                except Exception:
+                    pass
+
         page = context.new_page()
         page.goto(url, wait_until="domcontentloaded", timeout=35000)
         _wait_for_challenge_resolution_sync(page)
@@ -770,9 +963,17 @@ def take_screenshot(url: str, output_path: str, full_page: bool = True) -> str:
         return str(out_file)
 
 
-
-async def async_extract_page_design_data(url: str, wait_seconds: int = 2, use_cache: bool = True) -> Dict[str, Any]:
+async def async_extract_page_design_data(
+    url: str,
+    wait_seconds: int = 2,
+    use_cache: bool = True,
+    storage_state: Optional[str] = None,
+    cookies: Optional[Union[str, List[Dict[str, Any]]]] = None
+) -> Dict[str, Any]:
     """Inspects a page using Playwright Async API and extracts comprehensive design data."""
+    if storage_state or cookies:
+        use_cache = False
+
     if use_cache:
         cached = get_cached_extraction(url)
         if cached:
@@ -781,10 +982,22 @@ async def async_extract_page_design_data(url: str, wait_seconds: int = 2, use_ca
     ensure_browser_ready()
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context = await browser.new_context(
-            user_agent=BROWSER_USER_AGENT,
-            viewport={"width": 1440, "height": 900}
-        )
+        context_kwargs = {
+            "user_agent": BROWSER_USER_AGENT,
+            "viewport": {"width": 1440, "height": 900}
+        }
+        if storage_state and Path(storage_state).exists():
+            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+
+        context = await browser.new_context(**context_kwargs)
+        if cookies:
+            parsed_cookies = _parse_cookie_arg(cookies, url)
+            if parsed_cookies:
+                try:
+                    await context.add_cookies(parsed_cookies)
+                except Exception:
+                    pass
+
         page = await context.new_page()
 
         # Intercept external CSS to bypass CORS stylesheet restrictions
@@ -820,11 +1033,42 @@ async def async_extract_page_design_data(url: str, wait_seconds: int = 2, use_ca
         # Dual Theme Probe (Light & Dark Mode)
         try:
             await page.emulate_media(color_scheme="dark")
-            await page.wait_for_timeout(600)
+            await page.wait_for_timeout(500)
             dual_theme = await page.evaluate(DUAL_THEME_PROBE_JS)
             data["dualTheme"] = dual_theme
         except Exception:
             data["dualTheme"] = None
+
+        # Multi-Viewport Responsive Matrix Probe
+        try:
+            desktop_probe = await page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+        except Exception:
+            desktop_probe = None
+
+        try:
+            await page.set_viewport_size({"width": 768, "height": 1024})
+            await page.wait_for_timeout(350)
+            tablet_probe = await page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+        except Exception:
+            tablet_probe = None
+
+        try:
+            await page.set_viewport_size({"width": 375, "height": 812})
+            await page.wait_for_timeout(350)
+            mobile_probe = await page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+        except Exception:
+            mobile_probe = None
+
+        try:
+            await page.set_viewport_size({"width": 1440, "height": 900})
+        except Exception:
+            pass
+
+        data["responsiveMatrix"] = {
+            "desktop": desktop_probe,
+            "tablet": tablet_probe,
+            "mobile": mobile_probe
+        }
 
         await browser.close()
         if use_cache:
@@ -832,13 +1076,27 @@ async def async_extract_page_design_data(url: str, wait_seconds: int = 2, use_ca
         return data
 
 
-
-
-async def async_inspect_single_element(url: str, selector: str) -> Dict[str, Any]:
+async def async_inspect_single_element(
+    url: str,
+    selector: str,
+    storage_state: Optional[str] = None,
+    cookies: Optional[Union[str, List[Dict[str, Any]]]] = None
+) -> Dict[str, Any]:
     """Inspects a specific element on a page by CSS selector using Async API."""
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context = await browser.new_context(user_agent=BROWSER_USER_AGENT, viewport={"width": 1440, "height": 900})
+        context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
+        if storage_state and Path(storage_state).exists():
+            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+        context = await browser.new_context(**context_kwargs)
+        if cookies:
+            parsed = _parse_cookie_arg(cookies, url)
+            if parsed:
+                try:
+                    await context.add_cookies(parsed)
+                except Exception:
+                    pass
+
         page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded", timeout=35000)
         await _wait_for_challenge_resolution_async(page)
@@ -891,11 +1149,28 @@ async def async_inspect_single_element(url: str, selector: str) -> Dict[str, Any
         return result
 
 
-async def async_take_screenshot(url: str, output_path: str, full_page: bool = True) -> str:
+async def async_take_screenshot(
+    url: str,
+    output_path: str,
+    full_page: bool = True,
+    storage_state: Optional[str] = None,
+    cookies: Optional[Union[str, List[Dict[str, Any]]]] = None
+) -> str:
     """Takes a full-page or viewport screenshot using Async API."""
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context = await browser.new_context(user_agent=BROWSER_USER_AGENT, viewport={"width": 1440, "height": 900})
+        context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
+        if storage_state and Path(storage_state).exists():
+            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+        context = await browser.new_context(**context_kwargs)
+        if cookies:
+            parsed = _parse_cookie_arg(cookies, url)
+            if parsed:
+                try:
+                    await context.add_cookies(parsed)
+                except Exception:
+                    pass
+
         page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded", timeout=35000)
         await _wait_for_challenge_resolution_async(page)
@@ -906,6 +1181,157 @@ async def async_take_screenshot(url: str, output_path: str, full_page: bool = Tr
         await page.screenshot(path=str(out_file), full_page=full_page)
         await browser.close()
         return str(out_file)
+
+
+def generate_w3c_design_tokens(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Transforms extracted design data into standard W3C Design Tokens Community Group (DTCG) format.
+    Compatible with Figma Tokens, Style Dictionary, and modern design pipelines.
+    """
+    is_dark = data.get("isDark", False)
+    body_bg = data.get("bodyBg", "#ffffff")
+    body_color = data.get("bodyColor", "#111827")
+    bg_colors = data.get("colors", {}).get("backgrounds", [])
+    text_colors = data.get("colors", {}).get("texts", [])
+    border_colors = data.get("colors", {}).get("borders", [])
+
+    # Accent
+    primary_accent = None
+    buttons = data.get("buttons", [])
+    for b in buttons:
+        btn_bg = b.get("bg")
+        if btn_bg and btn_bg != body_bg and btn_bg not in ["#000000", "#ffffff", "transparent"]:
+            primary_accent = btn_bg
+            break
+    if not primary_accent and len(bg_colors) > 1:
+        for c in bg_colors:
+            if c != body_bg and c not in ["#000000", "#ffffff"]:
+                primary_accent = c
+                break
+    if not primary_accent:
+        primary_accent = "#2563eb"
+
+    # Surface
+    card_info = data.get("cardInfo") or {}
+    surface_bg = card_info.get("backgroundColor")
+    if not surface_bg or surface_bg == "transparent":
+        surface_bg = bg_colors[1] if len(bg_colors) > 1 and bg_colors[1] != body_bg else ("#18181b" if is_dark else "#ffffff")
+
+    # Typography
+    typo = data.get("typography", {})
+    body_typo = typo.get("body") or typo.get("p") or {}
+    h1_typo = typo.get("h1") or {}
+    h2_typo = typo.get("h2") or {}
+    h3_typo = typo.get("h3") or {}
+
+    font_family_primary = body_typo.get("fontFamily", "Inter, sans-serif")
+    font_family_heading = (h1_typo.get("fontFamily") if h1_typo else None) or font_family_primary
+
+    # Radii & Shadows
+    radii = data.get("radii", ["8px", "12px", "9999px"])
+    shadows = data.get("shadows", [])
+    containers = data.get("containers", ["1280px"])
+
+    tokens: Dict[str, Any] = {
+        "$schema": "https://design-tokens.github.io/community-group/format/",
+        "color": {
+            "canvas": {
+                "$value": body_bg,
+                "$type": "color",
+                "$description": "Root background canvas color"
+            },
+            "surface": {
+                "$value": surface_bg,
+                "$type": "color",
+                "$description": "Cards, elevated panels, and modal containers"
+            },
+            "text": {
+                "primary": {
+                    "$value": body_color,
+                    "$type": "color",
+                    "$description": "Primary text and headings"
+                },
+                "secondary": {
+                    "$value": text_colors[1] if len(text_colors) > 1 else body_color,
+                    "$type": "color",
+                    "$description": "Muted descriptions and secondary text"
+                }
+            },
+            "brand": {
+                "primary": {
+                    "$value": primary_accent,
+                    "$type": "color",
+                    "$description": "Brand action color, primary buttons and links"
+                }
+            },
+            "border": {
+                "default": {
+                    "$value": border_colors[0] if border_colors else ("#27272a" if is_dark else "#e5e7eb"),
+                    "$type": "color",
+                    "$description": "Default structural and card border"
+                }
+            }
+        },
+        "typography": {
+            "fontFamily": {
+                "heading": {
+                    "$value": [f.strip().strip("'\"") for f in font_family_heading.split(",")],
+                    "$type": "fontFamily"
+                },
+                "body": {
+                    "$value": [f.strip().strip("'\"") for f in font_family_primary.split(",")],
+                    "$type": "fontFamily"
+                }
+            },
+            "fontSize": {
+                "h1": { "$value": h1_typo.get("fontSize", "48px"), "$type": "dimension" },
+                "h2": { "$value": h2_typo.get("fontSize", "32px"), "$type": "dimension" },
+                "h3": { "$value": h3_typo.get("fontSize", "20px"), "$type": "dimension" },
+                "body": { "$value": body_typo.get("fontSize", "16px"), "$type": "dimension" }
+            },
+            "fontWeight": {
+                "h1": { "$value": str(h1_typo.get("fontWeight", "700")), "$type": "fontWeight" },
+                "h2": { "$value": str(h2_typo.get("fontWeight", "600")), "$type": "fontWeight" },
+                "body": { "$value": str(body_typo.get("fontWeight", "400")), "$type": "fontWeight" }
+            },
+            "lineHeight": {
+                "h1": { "$value": str(h1_typo.get("lineHeight", "1.1")), "$type": "dimension" },
+                "body": { "$value": str(body_typo.get("lineHeight", "1.5")), "$type": "dimension" }
+            }
+        },
+        "borderRadius": {
+            "sm": { "$value": radii[0] if len(radii) > 0 else "8px", "$type": "dimension" },
+            "md": { "$value": radii[1] if len(radii) > 1 else (radii[0] if radii else "12px"), "$type": "dimension" },
+            "pill": { "$value": "9999px", "$type": "dimension" }
+        },
+        "spacing": {
+            "container": { "$value": containers[0] if containers else "1280px", "$type": "dimension" }
+        }
+    }
+
+    if shadows:
+        tokens["shadow"] = {
+            "card": {
+                "$value": shadows[0],
+                "$type": "shadow",
+                "$description": "Primary card elevation shadow"
+            }
+        }
+
+    # Dual mode adaptive theme tokens if detected
+    dual_theme = data.get("dualTheme")
+    if dual_theme and dual_theme.get("hasDarkThemeSupport"):
+        dark_data = dual_theme.get("dark", {})
+        tokens["mode"] = {
+            "dark": {
+                "canvas": { "$value": dark_data.get("background", "#09090b"), "$type": "color" },
+                "surface": { "$value": dark_data.get("cardBackground", "#18181b"), "$type": "color" },
+                "text": { "$value": dark_data.get("foreground", "#f4f4f5"), "$type": "color" },
+                "border": { "$value": dark_data.get("cardBorder", "rgba(255, 255, 255, 0.1)"), "$type": "color" }
+            }
+        }
+
+    return tokens
 
 
 
@@ -1000,6 +1426,27 @@ def generate_agent_design_spec(data: Dict[str, Any], url: str) -> str:
         ])
     else:
         contrast_rows = f"| Texto Base sobre Canvas | `{body_color}` | `{body_bg}` | **Alta Legibilidad** | `AA Aprobado` |"
+
+    # Format Responsive Matrix Table
+    resp_matrix = data.get("responsiveMatrix") or {}
+    resp_rows = []
+    if resp_matrix:
+        labels = [
+            ("Desktop", resp_matrix.get("desktop"), "1440px"),
+            ("Tablet", resp_matrix.get("tablet"), "768px"),
+            ("Mobile", resp_matrix.get("mobile"), "375px"),
+        ]
+        for name, p, default_w in labels:
+            if p:
+                w = f"{p.get('windowWidth', default_w)}px" if isinstance(p.get('windowWidth'), (int, float)) else default_w
+                h1_sz = p.get('h1FontSize') or h1_typo.get('fontSize', 'N/A')
+                nav_m = p.get('navigationMode') or 'Barra Completa'
+                grid_s = p.get('gridSummary') or 'Fluido'
+                resp_rows.append(f"| **{name}** | `{w}` | `{h1_sz}` | `{nav_m}` | `{grid_s}` |")
+            else:
+                resp_rows.append(f"| **{name}** | `{default_w}` | `Estimado` | `Adaptativo` | `Fluido` |")
+
+    resp_table_md = "\n".join(resp_rows) if resp_rows else "| **Desktop** | `1440px` | `48px` | `Barra Completa` | `Multi-columna` |\n| **Mobile** | `375px` | `32px` | `Menú Hamburguesa` | `1 Columna (Stack)` |"
 
     # Format Dual Theme Block
     dual_theme_section = ""
@@ -1102,6 +1549,13 @@ This site uses a **{theme_name}** architecture characterized by:
 ---
 
 ## 4. Structural Blueprint & Div / Container Nesting Rules
+
+### Responsive Multi-Viewport Matrix (Adaptive Breakdown)
+Comportamiento responsivo extraído en vivo probando Desktop (1440px), Tablet (768px) y Mobile (375px):
+
+| Viewport | Ancho Testeado | H1 Font Size | Modo de Navegación | Estructura Grid / Layout |
+| :--- | :--- | :--- | :--- | :--- |
+{resp_table_md}
 
 ### Container Architecture & Nesting Paradigm
 The page enforces a strict, symmetrical container hierarchy for almost all sections:

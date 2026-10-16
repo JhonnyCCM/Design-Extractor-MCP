@@ -95,7 +95,13 @@ def delete_preset(name: str) -> bool:
     return False
 
 
-def run_preset(name: str, url: str, custom_output: Optional[str] = None) -> Dict[str, Any]:
+def run_preset(
+    name: str,
+    url: str,
+    custom_output: Optional[str] = None,
+    storage_state: Optional[str] = None,
+    cookies: Optional[Any] = None
+) -> Dict[str, Any]:
     """Executes an extraction workflow configured by the specified preset."""
     preset = get_preset(name)
     if not preset:
@@ -105,8 +111,14 @@ def run_preset(name: str, url: str, custom_output: Optional[str] = None) -> Dict
         url = "https://" + url
 
     from config_manager import get_configured_output_dir
-    from core_extractor import extract_page_design_data, generate_agent_design_spec, take_screenshot
+    from core_extractor import (
+        extract_page_design_data,
+        generate_agent_design_spec,
+        generate_w3c_design_tokens,
+        take_screenshot
+    )
     from server import _url_to_slug
+    from storage import atomic_write
 
     out_dir = Path(custom_output).resolve() if custom_output else (
         Path(preset["output_dir"]).resolve() if preset.get("output_dir") else get_configured_output_dir()
@@ -115,21 +127,37 @@ def run_preset(name: str, url: str, custom_output: Optional[str] = None) -> Dict
 
     slug = _url_to_slug(url)
     target_md = out_dir / f"{slug}_design_spec.md"
+    target_tokens = out_dir / f"{slug}_design_tokens.json"
     target_png = out_dir / f"{slug}_preview.png" if preset.get("screenshot", True) else None
 
     wait_sec = preset.get("wait_seconds", 2)
-    data = extract_page_design_data(url, wait_seconds=wait_sec)
+    data = extract_page_design_data(
+        url,
+        wait_seconds=wait_sec,
+        storage_state=storage_state,
+        cookies=cookies
+    )
     spec_md = generate_agent_design_spec(data, url)
-    target_md.write_text(spec_md, encoding="utf-8")
+    tokens_data = generate_w3c_design_tokens(data)
+
+    atomic_write(target_md, spec_md)
+    atomic_write(target_tokens, json.dumps(tokens_data, indent=2, ensure_ascii=False) + "\n")
 
     if target_png:
-        take_screenshot(url, str(target_png), full_page=True)
+        take_screenshot(
+            url,
+            str(target_png),
+            full_page=True,
+            storage_state=storage_state,
+            cookies=cookies
+        )
 
     return {
         "preset": name,
         "url": url,
         "data": data,
         "spec_file": target_md,
+        "tokens_file": target_tokens,
         "preview_file": target_png,
         "wait_seconds": wait_sec,
         "screenshot": bool(target_png),

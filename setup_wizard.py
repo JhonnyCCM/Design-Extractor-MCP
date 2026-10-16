@@ -17,7 +17,14 @@ from rich.text import Text
 from rich import box
 
 from config_manager import get_configured_output_dir, set_configured_output_dir
-from core_extractor import extract_page_design_data, generate_agent_design_spec, take_screenshot
+from core_extractor import (
+    extract_page_design_data,
+    generate_agent_design_spec,
+    generate_w3c_design_tokens,
+    save_login_session,
+    take_screenshot
+)
+from storage import atomic_write
 from server import _url_to_slug
 from ui import console, show_dashboard, show_menu
 from agent_integrator import detect_all_agents, register_all_detected_agents, register_agent
@@ -83,17 +90,42 @@ def handle_test_extraction() -> None:
     if not url.startswith("http://") and not url.startswith("https://"):
         url = "https://" + url
 
+    # Optional auth
+    ask_auth = console.input("[dim]¿Esta página requiere inicio de sesión (Moodle/SaaS)? [s/N]: [/dim]").strip().lower()
+    storage_state_file = None
+    cookie_str = None
+    if ask_auth in ["s", "si", "y", "yes"]:
+        auth_input = console.input("[bold #38bdf8]Ruta a auth.json (o presiona Enter para ingresar Cookie directa): [/bold #38bdf8]").strip()
+        if auth_input and Path(auth_input).exists():
+            storage_state_file = auth_input
+        else:
+            cookie_str = console.input("[bold #38bdf8]Introduce Cookie de sesión (ej: MoodleSession=abc123xyz): [/bold #38bdf8]").strip() or None
+
     out_dir = get_configured_output_dir()
     slug = _url_to_slug(url)
     target_md = out_dir / f"{slug}_design_spec.md"
+    target_tokens = out_dir / f"{slug}_design_tokens.json"
     target_png = out_dir / f"{slug}_preview.png"
 
     try:
-        with console.status(f"[bold #38bdf8]Iniciando navegador Chromium y analizando {url}...[/bold #38bdf8]", spinner="dots"):
-            data = extract_page_design_data(url)
+        with console.status(f"[bold #38bdf8]Iniciando Chromium y analizando {url}...[/bold #38bdf8]", spinner="dots"):
+            data = extract_page_design_data(
+                url,
+                storage_state=storage_state_file,
+                cookies=cookie_str
+            )
             spec_md = generate_agent_design_spec(data, url)
-            target_md.write_text(spec_md, encoding="utf-8")
-            take_screenshot(url, str(target_png), full_page=True)
+            tokens_data = generate_w3c_design_tokens(data)
+
+            atomic_write(target_md, spec_md)
+            atomic_write(target_tokens, json.dumps(tokens_data, indent=2, ensure_ascii=False) + "\n")
+            take_screenshot(
+                url,
+                str(target_png),
+                full_page=True,
+                storage_state=storage_state_file,
+                cookies=cookie_str
+            )
 
         console.print("[green][OK] Extracción completada con éxito![/green]")
 
@@ -107,6 +139,7 @@ def handle_test_extraction() -> None:
         summary_table.add_row("Fondo Canvas", data.get("bodyBg", "N/A"))
         summary_table.add_row("Fuente de Títulos", (data.get("typography", {}).get("h1") or {}).get("fontFamily", "Inter"))
         summary_table.add_row("Tech Stack / Frameworks", ", ".join(data.get("techStack", [])) or "Custom HTML/CSS")
+        summary_table.add_row("Tokens W3C (DTCG)", str(target_tokens))
         summary_table.add_row("Archivo Markdown", str(target_md))
         summary_table.add_row("Captura PNG", str(target_png))
 
@@ -119,6 +152,28 @@ def handle_test_extraction() -> None:
 
     except Exception as e:
         console.print(f"[red]Error durante la extracción: {str(e)}[/red]")
+
+
+def handle_login_session() -> None:
+    """Interactively opens Chromium to log in to protected sites and records auth.json."""
+    console.print()
+    console.print("[bold white]Grabador de Sesión Autenticada (Moodle, SaaS, Intranet)[/bold white]")
+    console.print("[dim]Se abrirá una ventana visible de Chromium para que inicies sesión normalmente (SSO, 2FA, etc.).[/dim]")
+    url = console.input("[bold #38bdf8]Introduce la URL de login o inicio de sesión: [/bold #38bdf8]").strip()
+    if not url:
+        console.print("[yellow]Operación cancelada.[/yellow]")
+        return
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "https://" + url
+
+    out_path = console.input("[bold #38bdf8]Ruta donde guardar la sesión [default: auth.json]: [/bold #38bdf8]").strip() or "auth.json"
+    try:
+        saved_path = save_login_session(url, output_path=out_path)
+        console.print(f"[bold green][OK] ¡Sesión autenticada guardada con éxito en:[/bold green] [bold cyan]{saved_path}[/bold cyan]")
+        console.print(f"[dim]Ahora puedes extraer páginas privadas usando el comando:[/dim]")
+        console.print(f"  [cyan]design-extractor extract <url-privada> -s {saved_path}[/cyan]\n")
+    except Exception as e:
+        console.print(f"[red]Error al guardar sesión: {str(e)}[/red]")
 
 
 def handle_open_folder() -> None:
@@ -310,11 +365,13 @@ def run_wizard() -> None:
             handle_view_agent_guide()
         elif choice == "8":
             handle_update()
+        elif choice == "9":
+            handle_login_session()
         elif choice in ["0", "q", "exit", "salir"]:
             console.print("\n[bold green]¡Hasta pronto! Que disfrutes construyendo grandes interfaces.[/bold green]\n")
             break
         else:
-            console.print("[red]Opción no válida. Elige un número del 0 al 8.[/red]")
+            console.print("[red]Opción no válida. Elige un número del 0 al 9.[/red]")
 
         console.input("\n[dim]Presiona Enter para continuar...[/dim]")
 

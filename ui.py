@@ -169,9 +169,11 @@ def show_dashboard(output_dir: Path, agents_status: Dict[str, Any]) -> None:
     instructions.append("  2. ¿Qué archivos se generan en cada consulta?\n", style="bold #38bdf8")
     instructions.append("     - Especificación: ", style="bold white")
     instructions.append("<dominio>_design_spec.md (tokens, tipografía, divs, directivas maestras)\n", style="dim")
+    instructions.append("     - Tokens W3C DTCG: ", style="bold white")
+    instructions.append("<dominio>_design_tokens.json (tokens estándar para Figma/Tailwind)\n", style="dim")
     instructions.append("     - Captura visual:  ", style="bold white")
     instructions.append("<dominio>_preview.png (captura completa en alta resolución)\n", style="dim")
-    instructions.append(f"     Ambos se guardan de forma permanente en: {output_dir}\n", style="italic green")
+    instructions.append(f"     Todos se guardan de forma permanente en: {output_dir}\n", style="italic green")
 
     console.print(Panel(
         instructions,
@@ -188,7 +190,7 @@ def show_menu() -> str:
     menu_table.add_column("Num", style="bold #fbc43f", width=5)
     menu_table.add_column("Acción", style="white")
 
-    menu_table.add_row("[1]", "Cambiar carpeta de guardado de especificaciones (.md y .png)")
+    menu_table.add_row("[1]", "Cambiar carpeta de guardado de especificaciones (.md, .json y .png)")
     menu_table.add_row("[2]", "Vincular automáticamente en todos los clientes y CLIs detectadas")
     menu_table.add_row("[3]", "Probar análisis de una web en vivo ahora mismo")
     menu_table.add_row("[4]", "Abrir carpeta de destino en el Explorador de Windows")
@@ -196,6 +198,7 @@ def show_menu() -> str:
     menu_table.add_row("[6]", "Administrar comandos personalizados y presets de flujo de trabajo")
     menu_table.add_row("[7]", "Ver guía de prompts y ejemplos para pasarle a tu agente")
     menu_table.add_row("[8]", "Buscar o instalar actualizaciones de Design Extractor (Auto-Update)")
+    menu_table.add_row("[9]", "Iniciar sesión en sitio web y guardar credenciales (auth.json)")
     menu_table.add_row("[0]", "Salir")
 
     console.print(Panel(
@@ -205,6 +208,6 @@ def show_menu() -> str:
         box=box.ROUNDED
     ))
 
-    choice = console.input("[bold #38bdf8]Selecciona una opción [0-8]: [/bold #38bdf8]").strip()
+    choice = console.input("[bold #38bdf8]Selecciona una opción [0-9]: [/bold #38bdf8]").strip()
     return choice
 
