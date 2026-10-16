@@ -15,6 +15,14 @@ from typing import Dict, Any, Optional, Tuple
 PROJECT_ROOT = Path(__file__).parent.resolve()
 CACHE_DIR = PROJECT_ROOT / ".cache"
 
+__all__ = [
+    "atomic_write",
+    "redact_sensitive_data",
+    "get_cached_extraction",
+    "set_cached_extraction",
+    "clear_cache"
+]
+
 
 def atomic_write(target_path: Path, content: str, encoding: str = "utf-8") -> None:
     """

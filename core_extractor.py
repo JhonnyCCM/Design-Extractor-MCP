@@ -24,6 +24,21 @@ BROWSER_LAUNCH_ARGS = [
     "--disable-setuid-sandbox"
 ]
 
+__all__ = [
+    "extract_page_design_data",
+    "inspect_single_element",
+    "take_screenshot",
+    "async_extract_page_design_data",
+    "async_inspect_single_element",
+    "async_take_screenshot",
+    "save_login_session",
+    "generate_agent_design_spec",
+    "generate_tailwind_theme",
+    "generate_w3c_design_tokens",
+    "generate_shadcn_theme",
+    "generate_tailwind_v4_theme"
+]
+
 
 def _parse_cookie_arg(cookie_arg: Any, target_url: str) -> List[Dict[str, Any]]:
     """
@@ -722,23 +737,25 @@ def save_login_session(url: str, output_path: str = "auth.json", timeout_seconds
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False, args=BROWSER_LAUNCH_ARGS)
-        context = browser.new_context(
-            user_agent=BROWSER_USER_AGENT,
-            viewport={"width": 1280, "height": 800}
-        )
-        page = context.new_page()
-        page.goto(url, wait_until="domcontentloaded", timeout=60000)
-
-        print(f"\n[!] Ventana de navegador abierta en: {url}")
-        print("[!] Inicia sesión en la plataforma con tus credenciales (incluso 2FA / SSO / Moodle).")
-        print("[!] Cuando hayas iniciado sesión y veas la interfaz privada, presiona ENTER aquí...")
         try:
-            input()
-        except EOFError:
-            page.wait_for_timeout(10000)
+            context = browser.new_context(
+                user_agent=BROWSER_USER_AGENT,
+                viewport={"width": 1280, "height": 800}
+            )
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-        context.storage_state(path=str(out_file))
-        browser.close()
+            print(f"\n[!] Ventana de navegador abierta en: {url}")
+            print("[!] Inicia sesión en la plataforma con tus credenciales (incluso 2FA / SSO / Moodle).")
+            print("[!] Cuando hayas iniciado sesión y veas la interfaz privada, presiona ENTER aquí...")
+            try:
+                input()
+            except EOFError:
+                page.wait_for_timeout(10000)
+
+            context.storage_state(path=str(out_file))
+        finally:
+            browser.close()
 
     return str(out_file)
 
@@ -762,95 +779,97 @@ def extract_page_design_data(
     ensure_browser_ready()
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context_kwargs = {
-            "user_agent": BROWSER_USER_AGENT,
-            "viewport": {"width": 1440, "height": 900}
-        }
-        if storage_state and Path(storage_state).exists():
-            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+        try:
+            context_kwargs = {
+                "user_agent": BROWSER_USER_AGENT,
+                "viewport": {"width": 1440, "height": 900}
+            }
+            if storage_state and Path(storage_state).exists():
+                context_kwargs["storage_state"] = str(Path(storage_state).resolve())
 
-        context = browser.new_context(**context_kwargs)
-        if cookies:
-            parsed_cookies = _parse_cookie_arg(cookies, url)
-            if parsed_cookies:
+            context = browser.new_context(**context_kwargs)
+            if cookies:
+                parsed_cookies = _parse_cookie_arg(cookies, url)
+                if parsed_cookies:
+                    try:
+                        context.add_cookies(parsed_cookies)
+                    except Exception:
+                        pass
+
+            page = context.new_page()
+
+            # Intercept external CSS to bypass CORS stylesheet restrictions
+            css_chunks = []
+            def on_response(res):
                 try:
-                    context.add_cookies(parsed_cookies)
+                    if res.request.resource_type == "stylesheet":
+                        t = res.text()
+                        if t and len(t) > 20:
+                            css_chunks.append(t)
                 except Exception:
                     pass
 
-        page = context.new_page()
-
-        # Intercept external CSS to bypass CORS stylesheet restrictions
-        css_chunks = []
-        def on_response(res):
+            page.on("response", on_response)
+            page.goto(url, wait_until="domcontentloaded", timeout=40000)
+            _wait_for_challenge_resolution_sync(page)
             try:
-                if res.request.resource_type == "stylesheet":
-                    t = res.text()
-                    if t and len(t) > 20:
-                        css_chunks.append(t)
+                page.wait_for_load_state("networkidle", timeout=7000)
+            except Exception:
+                pass
+            page.wait_for_timeout(wait_seconds * 1000)
+
+            # Inject downloaded stylesheets into inline <style> to bypass cross-origin CORS barriers
+            if css_chunks:
+                try:
+                    combined_css = "\n".join(css_chunks[:25])
+                    page.evaluate(INJECT_CSS_JS, combined_css)
+                except Exception:
+                    pass
+
+            data = page.evaluate(EXTRACTION_JS)
+
+            # Dual Theme Probe (Light & Dark Mode)
+            try:
+                page.emulate_media(color_scheme="dark")
+                page.wait_for_timeout(500)
+                dual_theme = page.evaluate(DUAL_THEME_PROBE_JS)
+                data["dualTheme"] = dual_theme
+            except Exception:
+                data["dualTheme"] = None
+
+            # Multi-Viewport Responsive Matrix Probe
+            try:
+                desktop_probe = page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+            except Exception:
+                desktop_probe = None
+
+            try:
+                page.set_viewport_size({"width": 768, "height": 1024})
+                page.wait_for_timeout(350)
+                tablet_probe = page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+            except Exception:
+                tablet_probe = None
+
+            try:
+                page.set_viewport_size({"width": 375, "height": 812})
+                page.wait_for_timeout(350)
+                mobile_probe = page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+            except Exception:
+                mobile_probe = None
+
+            try:
+                page.set_viewport_size({"width": 1440, "height": 900})
             except Exception:
                 pass
 
-        page.on("response", on_response)
-        page.goto(url, wait_until="domcontentloaded", timeout=40000)
-        _wait_for_challenge_resolution_sync(page)
-        try:
-            page.wait_for_load_state("networkidle", timeout=7000)
-        except Exception:
-            pass
-        page.wait_for_timeout(wait_seconds * 1000)
+            data["responsiveMatrix"] = {
+                "desktop": desktop_probe,
+                "tablet": tablet_probe,
+                "mobile": mobile_probe
+            }
+        finally:
+            browser.close()
 
-        # Inject downloaded stylesheets into inline <style> to bypass cross-origin CORS barriers
-        if css_chunks:
-            try:
-                combined_css = "\n".join(css_chunks[:25])
-                page.evaluate(INJECT_CSS_JS, combined_css)
-            except Exception:
-                pass
-
-        data = page.evaluate(EXTRACTION_JS)
-
-        # Dual Theme Probe (Light & Dark Mode)
-        try:
-            page.emulate_media(color_scheme="dark")
-            page.wait_for_timeout(500)
-            dual_theme = page.evaluate(DUAL_THEME_PROBE_JS)
-            data["dualTheme"] = dual_theme
-        except Exception:
-            data["dualTheme"] = None
-
-        # Multi-Viewport Responsive Matrix Probe
-        try:
-            desktop_probe = page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
-        except Exception:
-            desktop_probe = None
-
-        try:
-            page.set_viewport_size({"width": 768, "height": 1024})
-            page.wait_for_timeout(350)
-            tablet_probe = page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
-        except Exception:
-            tablet_probe = None
-
-        try:
-            page.set_viewport_size({"width": 375, "height": 812})
-            page.wait_for_timeout(350)
-            mobile_probe = page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
-        except Exception:
-            mobile_probe = None
-
-        try:
-            page.set_viewport_size({"width": 1440, "height": 900})
-        except Exception:
-            pass
-
-        data["responsiveMatrix"] = {
-            "desktop": desktop_probe,
-            "tablet": tablet_probe,
-            "mobile": mobile_probe
-        }
-
-        browser.close()
         if use_cache:
             set_cached_extraction(url, data)
         return data
@@ -865,67 +884,69 @@ def inspect_single_element(
     """Inspects a specific element on a page by CSS selector."""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
-        if storage_state and Path(storage_state).exists():
-            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
-        context = browser.new_context(**context_kwargs)
-        if cookies:
-            parsed = _parse_cookie_arg(cookies, url)
-            if parsed:
-                try:
-                    context.add_cookies(parsed)
-                except Exception:
-                    pass
+        try:
+            context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
+            if storage_state and Path(storage_state).exists():
+                context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+            context = browser.new_context(**context_kwargs)
+            if cookies:
+                parsed = _parse_cookie_arg(cookies, url)
+                if parsed:
+                    try:
+                        context.add_cookies(parsed)
+                    except Exception:
+                        pass
 
-        page = context.new_page()
-        page.goto(url, wait_until="domcontentloaded", timeout=35000)
-        _wait_for_challenge_resolution_sync(page)
-        page.wait_for_timeout(2000)
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=35000)
+            _wait_for_challenge_resolution_sync(page)
+            page.wait_for_timeout(2000)
 
-        js = f"""(sel) => {{
-            const el = document.querySelector(sel);
-            if (!el) return {{ error: 'Element not found: ' + sel }};
-            const s = window.getComputedStyle(el);
-            const rgbToHex = (color) => {{
-                if (!color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)') return null;
-                const match = color.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
-                if (!match) return color;
-                const r = parseInt(match[1]);
-                const g = parseInt(match[2]);
-                const b = parseInt(match[3]);
-                const a = match[4] !== undefined ? parseFloat(match[4]) : 1;
-                return a < 1 ? `rgba(${{r}}, ${{g}}, ${{b}}, ${{a}})` : "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-            }};
+            js = f"""(sel) => {{
+                const el = document.querySelector(sel);
+                if (!el) return {{ error: 'Element not found: ' + sel }};
+                const s = window.getComputedStyle(el);
+                const rgbToHex = (color) => {{
+                    if (!color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)') return null;
+                    const match = color.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+                    if (!match) return color;
+                    const r = parseInt(match[1]);
+                    const g = parseInt(match[2]);
+                    const b = parseInt(match[3]);
+                    const a = match[4] !== undefined ? parseFloat(match[4]) : 1;
+                    return a < 1 ? `rgba(${{r}}, ${{g}}, ${{b}}, ${{a}})` : "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+                }};
 
-            return {{
-                tagName: el.tagName.toLowerCase(),
-                className: el.className,
-                computedStyles: {{
-                    display: s.display,
-                    flexDirection: s.flexDirection,
-                    gridTemplateColumns: s.gridTemplateColumns,
-                    gap: s.gap,
-                    width: s.width,
-                    maxWidth: s.maxWidth,
-                    padding: s.padding,
-                    margin: s.margin,
-                    backgroundColor: rgbToHex(s.backgroundColor),
-                    color: rgbToHex(s.color),
-                    fontFamily: s.fontFamily,
-                    fontSize: s.fontSize,
-                    fontWeight: s.fontWeight,
-                    lineHeight: s.lineHeight,
-                    borderRadius: s.borderRadius,
-                    border: `${{s.borderWidth}} ${{s.borderStyle}} ${{rgbToHex(s.borderColor)}}`,
-                    boxShadow: s.boxShadow,
-                    backdropFilter: s.backdropFilter
-                }},
-                outerHTMLSample: el.outerHTML.slice(0, 500)
-            }};
-        }}"""
+                return {{
+                    tagName: el.tagName.toLowerCase(),
+                    className: el.className,
+                    computedStyles: {{
+                        display: s.display,
+                        flexDirection: s.flexDirection,
+                        gridTemplateColumns: s.gridTemplateColumns,
+                        gap: s.gap,
+                        width: s.width,
+                        maxWidth: s.maxWidth,
+                        padding: s.padding,
+                        margin: s.margin,
+                        backgroundColor: rgbToHex(s.backgroundColor),
+                        color: rgbToHex(s.color),
+                        fontFamily: s.fontFamily,
+                        fontSize: s.fontSize,
+                        fontWeight: s.fontWeight,
+                        lineHeight: s.lineHeight,
+                        borderRadius: s.borderRadius,
+                        border: `${{s.borderWidth}} ${{s.borderStyle}} ${{rgbToHex(s.borderColor)}}`,
+                        boxShadow: s.boxShadow,
+                        backdropFilter: s.backdropFilter
+                    }},
+                    outerHTMLSample: el.outerHTML.slice(0, 500)
+                }};
+            }}"""
 
-        result = page.evaluate(js, selector)
-        browser.close()
+            result = page.evaluate(js, selector)
+        finally:
+            browser.close()
         return result
 
 
@@ -939,27 +960,29 @@ def take_screenshot(
     """Takes a full-page or viewport screenshot of a webpage."""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
-        if storage_state and Path(storage_state).exists():
-            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
-        context = browser.new_context(**context_kwargs)
-        if cookies:
-            parsed = _parse_cookie_arg(cookies, url)
-            if parsed:
-                try:
-                    context.add_cookies(parsed)
-                except Exception:
-                    pass
+        try:
+            context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
+            if storage_state and Path(storage_state).exists():
+                context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+            context = browser.new_context(**context_kwargs)
+            if cookies:
+                parsed = _parse_cookie_arg(cookies, url)
+                if parsed:
+                    try:
+                        context.add_cookies(parsed)
+                    except Exception:
+                        pass
 
-        page = context.new_page()
-        page.goto(url, wait_until="domcontentloaded", timeout=35000)
-        _wait_for_challenge_resolution_sync(page)
-        page.wait_for_timeout(2500)
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=35000)
+            _wait_for_challenge_resolution_sync(page)
+            page.wait_for_timeout(2500)
 
-        out_file = Path(output_path).resolve()
-        out_file.parent.mkdir(parents=True, exist_ok=True)
-        page.screenshot(path=str(out_file), full_page=full_page)
-        browser.close()
+            out_file = Path(output_path).resolve()
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(out_file), full_page=full_page)
+        finally:
+            browser.close()
         return str(out_file)
 
 
@@ -982,95 +1005,97 @@ async def async_extract_page_design_data(
     ensure_browser_ready()
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context_kwargs = {
-            "user_agent": BROWSER_USER_AGENT,
-            "viewport": {"width": 1440, "height": 900}
-        }
-        if storage_state and Path(storage_state).exists():
-            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+        try:
+            context_kwargs = {
+                "user_agent": BROWSER_USER_AGENT,
+                "viewport": {"width": 1440, "height": 900}
+            }
+            if storage_state and Path(storage_state).exists():
+                context_kwargs["storage_state"] = str(Path(storage_state).resolve())
 
-        context = await browser.new_context(**context_kwargs)
-        if cookies:
-            parsed_cookies = _parse_cookie_arg(cookies, url)
-            if parsed_cookies:
+            context = await browser.new_context(**context_kwargs)
+            if cookies:
+                parsed_cookies = _parse_cookie_arg(cookies, url)
+                if parsed_cookies:
+                    try:
+                        await context.add_cookies(parsed_cookies)
+                    except Exception:
+                        pass
+
+            page = await context.new_page()
+
+            # Intercept external CSS to bypass CORS stylesheet restrictions
+            css_chunks = []
+            async def on_response(res):
                 try:
-                    await context.add_cookies(parsed_cookies)
+                    if res.request.resource_type == "stylesheet":
+                        t = await res.text()
+                        if t and len(t) > 20:
+                            css_chunks.append(t)
                 except Exception:
                     pass
 
-        page = await context.new_page()
-
-        # Intercept external CSS to bypass CORS stylesheet restrictions
-        css_chunks = []
-        async def on_response(res):
+            page.on("response", on_response)
+            await page.goto(url, wait_until="domcontentloaded", timeout=40000)
+            await _wait_for_challenge_resolution_async(page)
             try:
-                if res.request.resource_type == "stylesheet":
-                    t = await res.text()
-                    if t and len(t) > 20:
-                        css_chunks.append(t)
+                await page.wait_for_load_state("networkidle", timeout=7000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(wait_seconds * 1000)
+
+            # Inject downloaded stylesheets into inline <style> to bypass cross-origin CORS barriers
+            if css_chunks:
+                try:
+                    combined_css = "\n".join(css_chunks[:25])
+                    await page.evaluate(INJECT_CSS_JS, combined_css)
+                except Exception:
+                    pass
+
+            data = await page.evaluate(EXTRACTION_JS)
+
+            # Dual Theme Probe (Light & Dark Mode)
+            try:
+                await page.emulate_media(color_scheme="dark")
+                await page.wait_for_timeout(500)
+                dual_theme = await page.evaluate(DUAL_THEME_PROBE_JS)
+                data["dualTheme"] = dual_theme
+            except Exception:
+                data["dualTheme"] = None
+
+            # Multi-Viewport Responsive Matrix Probe
+            try:
+                desktop_probe = await page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+            except Exception:
+                desktop_probe = None
+
+            try:
+                await page.set_viewport_size({"width": 768, "height": 1024})
+                await page.wait_for_timeout(350)
+                tablet_probe = await page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+            except Exception:
+                tablet_probe = None
+
+            try:
+                await page.set_viewport_size({"width": 375, "height": 812})
+                await page.wait_for_timeout(350)
+                mobile_probe = await page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
+            except Exception:
+                mobile_probe = None
+
+            try:
+                await page.set_viewport_size({"width": 1440, "height": 900})
             except Exception:
                 pass
 
-        page.on("response", on_response)
-        await page.goto(url, wait_until="domcontentloaded", timeout=40000)
-        await _wait_for_challenge_resolution_async(page)
-        try:
-            await page.wait_for_load_state("networkidle", timeout=7000)
-        except Exception:
-            pass
-        await page.wait_for_timeout(wait_seconds * 1000)
+            data["responsiveMatrix"] = {
+                "desktop": desktop_probe,
+                "tablet": tablet_probe,
+                "mobile": mobile_probe
+            }
+        finally:
+            await browser.close()
 
-        # Inject downloaded stylesheets into inline <style> to bypass cross-origin CORS barriers
-        if css_chunks:
-            try:
-                combined_css = "\n".join(css_chunks[:25])
-                await page.evaluate(INJECT_CSS_JS, combined_css)
-            except Exception:
-                pass
-
-        data = await page.evaluate(EXTRACTION_JS)
-
-        # Dual Theme Probe (Light & Dark Mode)
-        try:
-            await page.emulate_media(color_scheme="dark")
-            await page.wait_for_timeout(500)
-            dual_theme = await page.evaluate(DUAL_THEME_PROBE_JS)
-            data["dualTheme"] = dual_theme
-        except Exception:
-            data["dualTheme"] = None
-
-        # Multi-Viewport Responsive Matrix Probe
-        try:
-            desktop_probe = await page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
-        except Exception:
-            desktop_probe = None
-
-        try:
-            await page.set_viewport_size({"width": 768, "height": 1024})
-            await page.wait_for_timeout(350)
-            tablet_probe = await page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
-        except Exception:
-            tablet_probe = None
-
-        try:
-            await page.set_viewport_size({"width": 375, "height": 812})
-            await page.wait_for_timeout(350)
-            mobile_probe = await page.evaluate(RESPONSIVE_VIEWPORT_PROBE_JS)
-        except Exception:
-            mobile_probe = None
-
-        try:
-            await page.set_viewport_size({"width": 1440, "height": 900})
-        except Exception:
-            pass
-
-        data["responsiveMatrix"] = {
-            "desktop": desktop_probe,
-            "tablet": tablet_probe,
-            "mobile": mobile_probe
-        }
-
-        await browser.close()
         if use_cache:
             set_cached_extraction(url, data)
         return data
@@ -1085,67 +1110,69 @@ async def async_inspect_single_element(
     """Inspects a specific element on a page by CSS selector using Async API."""
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
-        if storage_state and Path(storage_state).exists():
-            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
-        context = await browser.new_context(**context_kwargs)
-        if cookies:
-            parsed = _parse_cookie_arg(cookies, url)
-            if parsed:
-                try:
-                    await context.add_cookies(parsed)
-                except Exception:
-                    pass
+        try:
+            context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
+            if storage_state and Path(storage_state).exists():
+                context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+            context = await browser.new_context(**context_kwargs)
+            if cookies:
+                parsed = _parse_cookie_arg(cookies, url)
+                if parsed:
+                    try:
+                        await context.add_cookies(parsed)
+                    except Exception:
+                        pass
 
-        page = await context.new_page()
-        await page.goto(url, wait_until="domcontentloaded", timeout=35000)
-        await _wait_for_challenge_resolution_async(page)
-        await page.wait_for_timeout(2000)
+            page = await context.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=35000)
+            await _wait_for_challenge_resolution_async(page)
+            await page.wait_for_timeout(2000)
 
-        js = f"""(sel) => {{
-            const el = document.querySelector(sel);
-            if (!el) return {{ error: 'Element not found: ' + sel }};
-            const s = window.getComputedStyle(el);
-            const rgbToHex = (color) => {{
-                if (!color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)') return null;
-                const match = color.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
-                if (!match) return color;
-                const r = parseInt(match[1]);
-                const g = parseInt(match[2]);
-                const b = parseInt(match[3]);
-                const a = match[4] !== undefined ? parseFloat(match[4]) : 1;
-                return a < 1 ? `rgba(${{r}}, ${{g}}, ${{b}}, ${{a}})` : "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-            }};
+            js = f"""(sel) => {{
+                const el = document.querySelector(sel);
+                if (!el) return {{ error: 'Element not found: ' + sel }};
+                const s = window.getComputedStyle(el);
+                const rgbToHex = (color) => {{
+                    if (!color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)') return null;
+                    const match = color.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)(?:,\\s*([\\d.]+))?\\)/);
+                    if (!match) return color;
+                    const r = parseInt(match[1]);
+                    const g = parseInt(match[2]);
+                    const b = parseInt(match[3]);
+                    const a = match[4] !== undefined ? parseFloat(match[4]) : 1;
+                    return a < 1 ? `rgba(${{r}}, ${{g}}, ${{b}}, ${{a}})` : "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+                }};
 
-            return {{
-                tagName: el.tagName.toLowerCase(),
-                className: el.className,
-                computedStyles: {{
-                    display: s.display,
-                    flexDirection: s.flexDirection,
-                    gridTemplateColumns: s.gridTemplateColumns,
-                    gap: s.gap,
-                    width: s.width,
-                    maxWidth: s.maxWidth,
-                    padding: s.padding,
-                    margin: s.margin,
-                    backgroundColor: rgbToHex(s.backgroundColor),
-                    color: rgbToHex(s.color),
-                    fontFamily: s.fontFamily,
-                    fontSize: s.fontSize,
-                    fontWeight: s.fontWeight,
-                    lineHeight: s.lineHeight,
-                    borderRadius: s.borderRadius,
-                    border: `${{s.borderWidth}} ${{s.borderStyle}} ${{rgbToHex(s.borderColor)}}`,
-                    boxShadow: s.boxShadow,
-                    backdropFilter: s.backdropFilter
-                }},
-                outerHTMLSample: el.outerHTML.slice(0, 500)
-            }};
-        }}"""
+                return {{
+                    tagName: el.tagName.toLowerCase(),
+                    className: el.className,
+                    computedStyles: {{
+                        display: s.display,
+                        flexDirection: s.flexDirection,
+                        gridTemplateColumns: s.gridTemplateColumns,
+                        gap: s.gap,
+                        width: s.width,
+                        maxWidth: s.maxWidth,
+                        padding: s.padding,
+                        margin: s.margin,
+                        backgroundColor: rgbToHex(s.backgroundColor),
+                        color: rgbToHex(s.color),
+                        fontFamily: s.fontFamily,
+                        fontSize: s.fontSize,
+                        fontWeight: s.fontWeight,
+                        lineHeight: s.lineHeight,
+                        borderRadius: s.borderRadius,
+                        border: `${{s.borderWidth}} ${{s.borderStyle}} ${{rgbToHex(s.borderColor)}}`,
+                        boxShadow: s.boxShadow,
+                        backdropFilter: s.backdropFilter
+                    }},
+                    outerHTMLSample: el.outerHTML.slice(0, 500)
+                }};
+            }}"""
 
-        result = await page.evaluate(js, selector)
-        await browser.close()
+            result = await page.evaluate(js, selector)
+        finally:
+            await browser.close()
         return result
 
 
@@ -1159,27 +1186,29 @@ async def async_take_screenshot(
     """Takes a full-page or viewport screenshot using Async API."""
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
-        context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
-        if storage_state and Path(storage_state).exists():
-            context_kwargs["storage_state"] = str(Path(storage_state).resolve())
-        context = await browser.new_context(**context_kwargs)
-        if cookies:
-            parsed = _parse_cookie_arg(cookies, url)
-            if parsed:
-                try:
-                    await context.add_cookies(parsed)
-                except Exception:
-                    pass
+        try:
+            context_kwargs = {"user_agent": BROWSER_USER_AGENT, "viewport": {"width": 1440, "height": 900}}
+            if storage_state and Path(storage_state).exists():
+                context_kwargs["storage_state"] = str(Path(storage_state).resolve())
+            context = await browser.new_context(**context_kwargs)
+            if cookies:
+                parsed = _parse_cookie_arg(cookies, url)
+                if parsed:
+                    try:
+                        await context.add_cookies(parsed)
+                    except Exception:
+                        pass
 
-        page = await context.new_page()
-        await page.goto(url, wait_until="domcontentloaded", timeout=35000)
-        await _wait_for_challenge_resolution_async(page)
-        await page.wait_for_timeout(2500)
+            page = await context.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=35000)
+            await _wait_for_challenge_resolution_async(page)
+            await page.wait_for_timeout(2500)
 
-        out_file = Path(output_path).resolve()
-        out_file.parent.mkdir(parents=True, exist_ok=True)
-        await page.screenshot(path=str(out_file), full_page=full_page)
-        await browser.close()
+            out_file = Path(output_path).resolve()
+            out_file.parent.mkdir(parents=True, exist_ok=True)
+            await page.screenshot(path=str(out_file), full_page=full_page)
+        finally:
+            await browser.close()
         return str(out_file)
 
 

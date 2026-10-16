@@ -27,12 +27,19 @@ venv/
 ENV/
 env/
 
-# Local User Configurations
+# Local User Configurations & Auth Sessions
 config.json
+auth.json
+*.auth.json
+cookies.json
 
-# Local Generated Specs and Screenshots (not documentation)
+# Local Generated Design Artifacts (not documentation)
 *.png
 *_spec.md
+*_design_spec.md
+*_design_tokens.json
+*_shadcn_globals.css
+*_tailwind_v4.css
 !README.md
 
 # OS Artifacts
@@ -43,6 +50,14 @@ desktop.ini
 # Logs & Playwright
 browser-install.log
 *.log
+*.tmp
+
+# Testing, Linting & Coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Cache
 .cache/

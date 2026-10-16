@@ -19,6 +19,31 @@ dependencies = [
     "pydantic>=2.0.0",
     "tomlkit>=0.13.0"
 ]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Internet :: WWW/HTTP :: Browsers"
+]
+
+[project.urls]
+Homepage = "https://github.com/JhonnyCCM/Design-Extractor-MCP"
+Documentation = "https://github.com/JhonnyCCM/Design-Extractor-MCP#readme"
+Repository = "https://github.com/JhonnyCCM/Design-Extractor-MCP.git"
+Issues = "https://github.com/JhonnyCCM/Design-Extractor-MCP/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "ruff>=0.1.0"
+]
 
 [project.scripts]
 design-extractor = "cli:main"
@@ -38,4 +63,12 @@ py-modules = [
     "system_checker",
     "updater"
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
 

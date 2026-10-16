@@ -233,25 +233,38 @@ Cuando un Agente de IA se conecta a este servidor, tiene acceso a las siguientes
 
 ```text
 web-design-extractor-mcp/
-├── INSTALAR-WINDOWS.ps1 # Instalador automático en 1 clic para PowerShell
-├── install.sh           # Instalador automático para Linux y macOS
-├── cli.py               # Punto de entrada unificado y ejecutor de atajos (design-extractor)
-├── setup_wizard.py      # Asistente interactivo de terminal estilo Moodle MCP
-├── ui.py                # Componentes visuales, tablas y dashboard renderizados con Rich
-├── updater.py           # Motor de auto-actualización inteligente con GitHub
-├── system_checker.py    # Auto-diagnóstico y auto-reparación de Playwright Chromium
-├── storage.py           # Escritura atómica a prueba de fallos y caché con TTL
-├── path_installer.py    # Integración global del comando en PATH (Windows/Linux/macOS)
-├── preset_manager.py    # Gestor de flujos de trabajo personalizados y presets
-├── server.py            # Servidor MCP (FastMCP) con todas las herramientas expuestas
-├── core_extractor.py    # Motor de análisis DOM, estilos computados y Playwright
-├── config_manager.py    # Gestor de carpetas y persistencia de configuración
-├── configurar.bat       # Lanzador rápido para terminal en Windows
-├── pyproject.toml       # Especificación de paquete estándar y entry point (v1.4.0)
-├── requirements.txt     # Dependencias de Python
-├── tests/               # Pruebas unitarias completas (test_phase3.py, test_phase4.py)
-├── .github/workflows/   # CI automático en Windows y Ubuntu con Python 3.10-3.12
-└── README.md            # Documentación completa
+├── .github/
+│   ├── ISSUE_TEMPLATE/     # Plantillas oficiales para reporte de bugs y sugerencias
+│   ├── workflows/ci.yml    # CI automático en Windows y Ubuntu con Python 3.10-3.12
+│   └── PULL_REQUEST_TEMPLATE.md
+├── tests/                  # Suite integral de pruebas unitarias
+│   ├── __init__.py
+│   ├── test_phase3.py
+│   ├── test_phase4.py
+│   └── test_project_structure.py
+├── INSTALAR-WINDOWS.ps1    # Instalador automático en 1 clic para PowerShell
+├── install.sh              # Instalador automático para Linux y macOS
+├── cli.py                  # Punto de entrada unificado y ejecutor de comandos (design-extractor)
+├── server.py               # Servidor MCP (FastMCP) con todas las herramientas expuestas
+├── core_extractor.py       # Motor de análisis DOM, estilos computados y Playwright
+├── setup_wizard.py         # Asistente interactivo de terminal estilo Moodle MCP
+├── ui.py                   # Componentes visuales, tablas y dashboard renderizados con Rich
+├── updater.py              # Motor de auto-actualización inteligente con GitHub
+├── system_checker.py       # Auto-diagnóstico y auto-reparación de Playwright Chromium
+├── storage.py              # Escritura atómica a prueba de fallos y caché con TTL
+├── path_installer.py       # Integración global del comando en PATH (Windows/Linux/macOS)
+├── preset_manager.py       # Gestor de flujos de trabajo personalizados y presets
+├── config_manager.py       # Gestor de carpetas y persistencia de configuración
+├── configurar.bat          # Lanzador rápido para terminal en Windows
+├── pyproject.toml          # Especificación de empaquetado moderno y metadatos (v1.4.0)
+├── requirements.txt        # Dependencias de producción
+├── .editorconfig           # Estándar de formato para editores e IDEs
+├── .gitignore              # Exclusiones seguras de Git (artefactos, auth, temporales)
+├── CONTRIBUTING.md         # Guía de contribución para la comunidad
+├── CODE_OF_CONDUCT.md      # Código de conducta (Contributor Covenant v2.1)
+├── SECURITY.md             # Política de divulgación responsable de vulnerabilidades
+├── LICENSE                 # Licencia oficial MIT
+└── README.md               # Documentación y manual de uso
 ```
 
 ---
@@ -265,6 +278,15 @@ python -m unittest discover tests
 
 ---
 
+## 🤝 Comunidad y Contribución
+
+¡Las contribuciones son bienvenidas! Consulta nuestras guías comunitarias:
+- [Guía de Contribución](CONTRIBUTING.md)
+- [Código de Conducta](CODE_OF_CONDUCT.md)
+- [Política de Seguridad](SECURITY.md)
+
+---
+
 ## 📄 Licencia
 
-Licencia MIT. Libre para uso personal y comercial.
+Distribuido bajo la [Licencia MIT](LICENSE). Libre para uso personal, educativo y comercial.
