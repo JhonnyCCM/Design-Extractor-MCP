@@ -1334,6 +1334,260 @@ def generate_w3c_design_tokens(data: Dict[str, Any]) -> Dict[str, Any]:
     return tokens
 
 
+def _hex_or_rgb_to_hsl_components(color_str: str) -> str:
+    """
+    Converts a HEX (#ffffff) or RGB/RGBA string to Shadcn UI's standard HSL component string
+    (e.g., '222.2 84% 4.9%').
+    """
+    if not color_str:
+        return "0 0% 100%"
+
+    color_str = color_str.strip().lower()
+    r, g, b = 255, 255, 255
+    if color_str.startswith("#"):
+        clean_hex = color_str.lstrip("#")
+        if len(clean_hex) == 3:
+            clean_hex = "".join([c * 2 for c in clean_hex])
+        if len(clean_hex) >= 6:
+            try:
+                r = int(clean_hex[0:2], 16)
+                g = int(clean_hex[2:4], 16)
+                b = int(clean_hex[4:6], 16)
+            except Exception:
+                pass
+    elif "rgb" in color_str:
+        match = re.search(r"rgba?\((\d+),\s*(\d+),\s*(\d+)", color_str)
+        if match:
+            r = int(match.group(1))
+            g = int(match.group(2))
+            b = int(match.group(3))
+
+    r_norm = r / 255.0
+    g_norm = g / 255.0
+    b_norm = b / 255.0
+
+    max_c = max(r_norm, g_norm, b_norm)
+    min_c = min(r_norm, g_norm, b_norm)
+    delta = max_c - min_c
+
+    l = (max_c + min_c) / 2.0
+
+    if delta == 0:
+        h = 0.0
+        s = 0.0
+    else:
+        s = delta / (1.0 - abs(2.0 * l - 1.0))
+        if max_c == r_norm:
+            h = ((g_norm - b_norm) / delta) % 6.0
+        elif max_c == g_norm:
+            h = ((b_norm - r_norm) / delta) + 2.0
+        else:
+            h = ((r_norm - g_norm) / delta) + 4.0
+        h = h * 60.0
+
+    h_deg = round(h if h >= 0 else h + 360, 1)
+    s_pct = round(s * 100, 1)
+    l_pct = round(l * 100, 1)
+
+    return f"{h_deg} {s_pct}% {l_pct}%"
+
+
+def generate_shadcn_theme(data: Dict[str, Any]) -> str:
+    """
+    Generates a production-ready globals.css theme snippet for Shadcn UI
+    with HSL variables mapped for both :root (Light) and .dark (Dark) modes.
+    """
+    is_dark = data.get("isDark", False)
+    body_bg = data.get("bodyBg", "#ffffff")
+    body_color = data.get("bodyColor", "#0f172a")
+    bg_colors = data.get("colors", {}).get("backgrounds", [])
+    border_colors = data.get("colors", {}).get("borders", [])
+
+    primary_accent = None
+    buttons = data.get("buttons", [])
+    for b in buttons:
+        btn_bg = b.get("bg")
+        if btn_bg and btn_bg != body_bg and btn_bg not in ["#000000", "#ffffff", "transparent"]:
+            primary_accent = btn_bg
+            break
+    if not primary_accent and len(bg_colors) > 1:
+        for c in bg_colors:
+            if c != body_bg and c not in ["#000000", "#ffffff"]:
+                primary_accent = c
+                break
+    if not primary_accent:
+        primary_accent = "#2563eb"
+
+    card_info = data.get("cardInfo") or {}
+    surface_bg = card_info.get("backgroundColor")
+    if not surface_bg or surface_bg == "transparent":
+        surface_bg = bg_colors[1] if len(bg_colors) > 1 and bg_colors[1] != body_bg else ("#18181b" if is_dark else "#ffffff")
+
+    radii = data.get("radii", ["8px", "12px", "9999px"])
+    raw_radius = radii[0] if radii else "8px"
+    clean_radius = raw_radius if raw_radius.endswith("px") or raw_radius.endswith("rem") else "0.5rem"
+    if clean_radius.endswith("px"):
+        try:
+            px_val = float(clean_radius.replace("px", ""))
+            clean_radius = f"{round(px_val / 16.0, 3)}rem"
+        except Exception:
+            clean_radius = "0.5rem"
+
+    border_color = border_colors[0] if border_colors else ("#27272a" if is_dark else "#e2e8f0")
+
+    # Light tokens (HSL)
+    bg_hsl = _hex_or_rgb_to_hsl_components(body_bg if not is_dark else "#ffffff")
+    fg_hsl = _hex_or_rgb_to_hsl_components(body_color if not is_dark else "#09090b")
+    card_hsl = _hex_or_rgb_to_hsl_components(surface_bg if not is_dark else "#ffffff")
+    primary_hsl = _hex_or_rgb_to_hsl_components(primary_accent)
+    border_hsl = _hex_or_rgb_to_hsl_components(border_color if not is_dark else "#e2e8f0")
+
+    # Dark tokens (HSL)
+    dual_theme = data.get("dualTheme") or {}
+    dark_data = dual_theme.get("dark", {})
+    dark_bg_hex = dark_data.get("background", body_bg if is_dark else "#09090b")
+    dark_fg_hex = dark_data.get("foreground", body_color if is_dark else "#f4f4f5")
+    dark_card_hex = dark_data.get("cardBackground", surface_bg if is_dark else "#18181b")
+    dark_border_hex = dark_data.get("cardBorder", border_color if is_dark else "rgba(255, 255, 255, 0.1)")
+
+    dark_bg_hsl = _hex_or_rgb_to_hsl_components(dark_bg_hex)
+    dark_fg_hsl = _hex_or_rgb_to_hsl_components(dark_fg_hex)
+    dark_card_hsl = _hex_or_rgb_to_hsl_components(dark_card_hex)
+    dark_border_hsl = _hex_or_rgb_to_hsl_components(dark_border_hex)
+
+    css = f"""@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {{
+  :root {{
+    --background: {bg_hsl};
+    --foreground: {fg_hsl};
+    --card: {card_hsl};
+    --card-foreground: {fg_hsl};
+    --popover: {card_hsl};
+    --popover-foreground: {fg_hsl};
+    --primary: {primary_hsl};
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: {border_hsl};
+    --input: {border_hsl};
+    --ring: {primary_hsl};
+    --radius: {clean_radius};
+  }}
+
+  .dark {{
+    --background: {dark_bg_hsl};
+    --foreground: {dark_fg_hsl};
+    --card: {dark_card_hsl};
+    --card-foreground: {dark_fg_hsl};
+    --popover: {dark_card_hsl};
+    --popover-foreground: {dark_fg_hsl};
+    --primary: {primary_hsl};
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: {dark_border_hsl};
+    --input: {dark_border_hsl};
+    --ring: {primary_hsl};
+  }}
+}}
+
+@layer base {{
+  * {{
+    @apply border-border;
+  }}
+  body {{
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }}
+}}
+"""
+    return css
+
+
+def generate_tailwind_v4_theme(data: Dict[str, Any]) -> str:
+    """
+    Generates modern Tailwind CSS v4 CSS-first theme configuration using the @theme directive.
+    """
+    body_bg = data.get("bodyBg", "#ffffff")
+    body_color = data.get("bodyColor", "#111827")
+    bg_colors = data.get("colors", {}).get("backgrounds", [])
+    border_colors = data.get("colors", {}).get("borders", [])
+
+    primary_accent = None
+    buttons = data.get("buttons", [])
+    for b in buttons:
+        btn_bg = b.get("bg")
+        if btn_bg and btn_bg != body_bg and btn_bg not in ["#000000", "#ffffff", "transparent"]:
+            primary_accent = btn_bg
+            break
+    if not primary_accent and len(bg_colors) > 1:
+        for c in bg_colors:
+            if c != body_bg and c not in ["#000000", "#ffffff"]:
+                primary_accent = c
+                break
+    if not primary_accent:
+        primary_accent = "#2563eb"
+
+    card_info = data.get("cardInfo") or {}
+    surface_bg = card_info.get("backgroundColor") or (bg_colors[1] if len(bg_colors) > 1 else "#f8fafc")
+
+    typo = data.get("typography", {})
+    body_typo = typo.get("body") or typo.get("p") or {}
+    h1_typo = typo.get("h1") or {}
+    font_heading = (h1_typo.get("fontFamily") if h1_typo else None) or body_typo.get("fontFamily", "Inter, sans-serif")
+    font_body = body_typo.get("fontFamily", "Inter, sans-serif")
+
+    radii = data.get("radii", ["8px", "12px", "9999px"])
+    containers = data.get("containers", ["1280px"])
+
+    css = f"""@import "tailwindcss";
+
+@theme {{
+  --color-background: {body_bg};
+  --color-foreground: {body_color};
+  --color-primary: {primary_accent};
+  --color-card: {surface_bg};
+  --color-card-foreground: {body_color};
+  --color-border: {border_colors[0] if border_colors else "#e5e7eb"};
+
+  --font-heading: {font_heading};
+  --font-sans: {font_body};
+
+  --radius-sm: {radii[0] if len(radii) > 0 else "8px"};
+  --radius-md: {radii[1] if len(radii) > 1 else (radii[0] if radii else "12px")};
+  --radius-lg: 16px;
+  --radius-pill: 9999px;
+
+  --container-max-width: {containers[0] if containers else "1280px"};
+}}
+
+@layer base {{
+  body {{
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }}
+  h1, h2, h3, h4, h5, h6 {{
+    font-family: var(--font-heading);
+  }}
+}}
+"""
+    return css
 
 
 def generate_agent_design_spec(data: Dict[str, Any], url: str) -> str:

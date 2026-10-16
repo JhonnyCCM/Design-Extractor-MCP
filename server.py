@@ -20,7 +20,9 @@ from core_extractor import (
     async_inspect_single_element,
     async_take_screenshot,
     generate_agent_design_spec,
-    generate_w3c_design_tokens
+    generate_w3c_design_tokens,
+    generate_shadcn_theme as core_generate_shadcn_theme,
+    generate_tailwind_v4_theme as core_generate_tailwind_v4_theme
 )
 
 mcp = FastMCP("web-design-extractor")
@@ -110,11 +112,18 @@ async def extract_design_system(
             target_md = out_dir / f"{slug}_design_spec.md"
 
         target_tokens = target_md.parent / f"{slug}_design_tokens.json"
+        target_shadcn = target_md.parent / f"{slug}_shadcn_globals.css"
+        target_tw4 = target_md.parent / f"{slug}_tailwind_v4.css"
         target_png = target_md.parent / f"{slug}_preview.png"
 
         target_md.parent.mkdir(parents=True, exist_ok=True)
         atomic_write(target_md, spec_md)
         atomic_write(target_tokens, json.dumps(tokens_data, indent=2, ensure_ascii=False) + "\n")
+
+        shadcn_css = core_generate_shadcn_theme(data)
+        tw4_css = core_generate_tailwind_v4_theme(data)
+        atomic_write(target_shadcn, shadcn_css)
+        atomic_write(target_tw4, tw4_css)
 
         # 3. Capture screenshot
         await async_take_screenshot(
@@ -130,6 +139,8 @@ async def extract_design_system(
             f"### 📁 Archivos Guardados en Carpeta Configurada:\n"
             f"- **Especificación Markdown (.md):** `{target_md}`\n"
             f"- **Tokens W3C DTCG (.json):** `{target_tokens}`\n"
+            f"- **Tema Shadcn UI (.css):** `{target_shadcn}`\n"
+            f"- **Tema Tailwind v4 (.css):** `{target_tw4}`\n"
             f"- **Captura de Pantalla (.png):** `{target_png}`\n"
         )
 
@@ -290,6 +301,185 @@ async def generate_tailwind_theme(
         return spec_md
     except Exception as e:
         return f"Error generating Tailwind theme for {url}: {str(e)}"
+
+
+@mcp.tool()
+async def generate_shadcn_theme(
+    url: str,
+    output_file: str = "",
+    storage_state: str = "",
+    cookie: str = ""
+) -> str:
+    """
+    Extracts the design tokens from a webpage and outputs a production-ready
+    globals.css theme snippet for Shadcn UI with Light and Dark mode HSL variables.
+
+    Args:
+        url: The URL of the webpage to analyze.
+        output_file: Optional custom filename or path for the globals.css.
+        storage_state: Optional path to an authenticated session file ('auth.json').
+        cookie: Optional direct session cookie ('MoodleSession=...').
+
+    Returns:
+        Complete globals.css theme snippet with @layer base { :root { ... } .dark { ... } }.
+    """
+    try:
+        out_dir = get_configured_output_dir()
+        slug = _url_to_slug(url)
+
+        data = await async_extract_page_design_data(
+            url,
+            storage_state=storage_state or None,
+            cookies=cookie or None
+        )
+        shadcn_css = core_generate_shadcn_theme(data)
+
+        if output_file:
+            target_css = Path(output_file).resolve()
+            if not target_css.suffix:
+                target_css = target_css / f"{slug}_shadcn_globals.css"
+        else:
+            target_css = out_dir / f"{slug}_shadcn_globals.css"
+
+        target_css.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(target_css, shadcn_css)
+
+        return f"/* Archivo guardado en: {target_css} */\n\n" + shadcn_css
+    except Exception as e:
+        return f"Error generating Shadcn theme for {url}: {redact_sensitive_data(str(e))}"
+
+
+@mcp.tool()
+async def generate_tailwind_v4_theme(
+    url: str,
+    output_file: str = "",
+    storage_state: str = "",
+    cookie: str = ""
+) -> str:
+    """
+    Extracts the design system from a webpage and generates a modern Tailwind CSS v4
+    theme using the CSS-native @theme directive.
+
+    Args:
+        url: The URL of the webpage to analyze.
+        output_file: Optional custom filename or path.
+        storage_state: Optional path to an authenticated session file ('auth.json').
+        cookie: Optional direct session cookie ('MoodleSession=...').
+
+    Returns:
+        CSS snippet containing the Tailwind v4 @theme declaration.
+    """
+    try:
+        out_dir = get_configured_output_dir()
+        slug = _url_to_slug(url)
+
+        data = await async_extract_page_design_data(
+            url,
+            storage_state=storage_state or None,
+            cookies=cookie or None
+        )
+        tw4_css = core_generate_tailwind_v4_theme(data)
+
+        if output_file:
+            target_css = Path(output_file).resolve()
+            if not target_css.suffix:
+                target_css = target_css / f"{slug}_tailwind_v4.css"
+        else:
+            target_css = out_dir / f"{slug}_tailwind_v4.css"
+
+        target_css.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(target_css, tw4_css)
+
+        return f"/* Archivo guardado en: {target_css} */\n\n" + tw4_css
+    except Exception as e:
+        return f"Error generating Tailwind v4 theme for {url}: {redact_sensitive_data(str(e))}"
+
+
+@mcp.tool()
+async def extract_brand_assets(
+    url: str,
+    storage_state: str = "",
+    cookie: str = ""
+) -> str:
+    """
+    Extracts brand and visual assets from a webpage: Favicon URL, raw Logo SVG code,
+    number of UI icons/SVGs on page, and external Google Fonts or @font-face CDN links.
+
+    Args:
+        url: The URL of the webpage to inspect.
+        storage_state: Optional path to an authenticated session file ('auth.json').
+        cookie: Optional direct session cookie ('MoodleSession=...').
+
+    Returns:
+        JSON string summarizing favicon, logo SVG snippet, icon count, and web fonts.
+    """
+    try:
+        data = await async_extract_page_design_data(
+            url,
+            storage_state=storage_state or None,
+            cookies=cookie or None
+        )
+        brand = data.get("brandAssets") or {}
+        assets = {
+            "url": url,
+            "title": data.get("title"),
+            "faviconUrl": brand.get("faviconUrl"),
+            "hasLogoSvg": brand.get("hasLogoSvg", False),
+            "logoSvgSnippet": brand.get("logoSvgSnippet"),
+            "totalSvgsOnPage": brand.get("totalSvgsOnPage", 0),
+            "externalFonts": data.get("externalFonts", []),
+            "fontFaceCount": len(data.get("fontFaceDeclarations", []))
+        }
+        return json.dumps(assets, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return f"Error extracting brand assets for {url}: {redact_sensitive_data(str(e))}"
+
+
+@mcp.tool()
+async def check_accessibility_audit(
+    url: str,
+    storage_state: str = "",
+    cookie: str = ""
+) -> str:
+    """
+    Conducts a mathematical WCAG 2.1 color contrast audit between text and background
+    elements on the webpage. Returns contrast ratios (AA/AAA) and recommendations.
+
+    Args:
+        url: The URL of the webpage to audit.
+        storage_state: Optional path to an authenticated session file ('auth.json').
+        cookie: Optional direct session cookie ('MoodleSession=...').
+
+    Returns:
+        JSON string containing the WCAG 2.1 contrast audit and pass/fail summary.
+    """
+    try:
+        data = await async_extract_page_design_data(
+            url,
+            storage_state=storage_state or None,
+            cookies=cookie or None
+        )
+        audit_list = data.get("contrastAudit") or []
+        aa_pass = sum(1 for c in audit_list if "AA" in c.get("level", ""))
+        aaa_pass = sum(1 for c in audit_list if "AAA" in c.get("level", ""))
+        fails = sum(1 for c in audit_list if "Falla" in c.get("level", "") or "No cumple" in c.get("level", ""))
+
+        result = {
+            "url": url,
+            "wcagStandard": "WCAG 2.1 Level AA / AAA",
+            "summary": {
+                "totalPairsTested": len(audit_list),
+                "aaPassCount": aa_pass,
+                "aaaPassCount": aaa_pass,
+                "failCount": fails
+            },
+            "auditPairs": audit_list
+        }
+        return json.dumps(result, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return f"Error conducting accessibility audit for {url}: {redact_sensitive_data(str(e))}"
+
+
 
 
 @mcp.tool()

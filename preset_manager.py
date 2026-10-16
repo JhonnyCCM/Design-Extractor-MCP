@@ -115,6 +115,8 @@ def run_preset(
         extract_page_design_data,
         generate_agent_design_spec,
         generate_w3c_design_tokens,
+        generate_shadcn_theme,
+        generate_tailwind_v4_theme,
         take_screenshot
     )
     from server import _url_to_slug
@@ -128,6 +130,8 @@ def run_preset(
     slug = _url_to_slug(url)
     target_md = out_dir / f"{slug}_design_spec.md"
     target_tokens = out_dir / f"{slug}_design_tokens.json"
+    target_shadcn = out_dir / f"{slug}_shadcn_globals.css"
+    target_tw4 = out_dir / f"{slug}_tailwind_v4.css"
     target_png = out_dir / f"{slug}_preview.png" if preset.get("screenshot", True) else None
 
     wait_sec = preset.get("wait_seconds", 2)
@@ -139,9 +143,13 @@ def run_preset(
     )
     spec_md = generate_agent_design_spec(data, url)
     tokens_data = generate_w3c_design_tokens(data)
+    shadcn_css = generate_shadcn_theme(data)
+    tw4_css = generate_tailwind_v4_theme(data)
 
     atomic_write(target_md, spec_md)
     atomic_write(target_tokens, json.dumps(tokens_data, indent=2, ensure_ascii=False) + "\n")
+    atomic_write(target_shadcn, shadcn_css)
+    atomic_write(target_tw4, tw4_css)
 
     if target_png:
         take_screenshot(
@@ -158,6 +166,8 @@ def run_preset(
         "data": data,
         "spec_file": target_md,
         "tokens_file": target_tokens,
+        "shadcn_file": target_shadcn,
+        "tailwind_v4_file": target_tw4,
         "preview_file": target_png,
         "wait_seconds": wait_sec,
         "screenshot": bool(target_png),

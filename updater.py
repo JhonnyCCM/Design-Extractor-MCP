@@ -21,7 +21,7 @@ if not PYTHON_EXE.exists():
     PYTHON_EXE = Path(sys.executable)
 
 GITHUB_REPO = "JhonnyCCM/Design-Extractor-MCP"
-CURRENT_VERSION = "1.3.0"
+CURRENT_VERSION = "1.4.0"
 UPDATE_CACHE_FILE = PROJECT_ROOT / ".cache" / "update_status.json"
 
 

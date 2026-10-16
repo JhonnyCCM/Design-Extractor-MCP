@@ -1,33 +1,69 @@
 # Design Extractor MCP 🌐✨
-> **Model Context Protocol (MCP) Server & CLI para ingeniería inversa de sistemas de diseño, estructuras de contenedores, tokens W3C DTCG y directivas para Agentes de IA.**
+> **Model Context Protocol (MCP) Server & CLI para ingeniería inversa de sistemas de diseño, estructuras de contenedores, tokens W3C DTCG, temas Shadcn UI, Tailwind v4 y directivas para Agentes de IA.**
 
 [![MCP Standard](https://img.shields.io/badge/MCP-Protocol%201.0-blue.svg)](https://modelcontextprotocol.io)
-[![Version](https://img.shields.io/badge/Version-1.3.0-brightgreen.svg)](https://github.com/JhonnyCCM/Design-Extractor-MCP)
+[![Version](https://img.shields.io/badge/Version-1.4.0-brightgreen.svg)](https://github.com/JhonnyCCM/Design-Extractor-MCP)
+[![CI Tests](https://img.shields.io/badge/CI-Passing-brightgreen.svg)](https://github.com/JhonnyCCM/Design-Extractor-MCP/actions)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-green.svg)](https://python.org)
 [![Playwright](https://img.shields.io/badge/Engine-Playwright%20Chromium-orange.svg)](https://playwright.dev)
 [![W3C DTCG](https://img.shields.io/badge/Tokens-W3C%20DTCG%20Standard-purple.svg)](https://design-tokens.github.io/community-group/format/)
+[![Shadcn UI](https://img.shields.io/badge/Themes-Shadcn%20UI%20(HSL)-black.svg)](https://ui.shadcn.com)
+[![Tailwind CSS v4](https://img.shields.io/badge/Themes-Tailwind%20v4%20(@theme)-06B6D4.svg)](https://tailwindcss.com)
+
+---
+
+## ⚡ Instalación en Un Paso (One-Liner Installers)
+
+### 🪟 Windows (PowerShell)
+Abre PowerShell y ejecuta:
+```powershell
+irm https://raw.githubusercontent.com/JhonnyCCM/Design-Extractor-MCP/main/INSTALAR-WINDOWS.ps1 | iex
+```
+*O si ya clonaste el repositorio localmente:*
+```powershell
+powershell -ExecutionPolicy Bypass -File .\INSTALAR-WINDOWS.ps1
+```
+
+### 🍎🐧 Linux & macOS (Bash)
+```bash
+curl -sSL https://raw.githubusercontent.com/JhonnyCCM/Design-Extractor-MCP/main/install.sh | bash
+```
+
+El instalador automático:
+1. Comprueba y valida Python 3.10+.
+2. Crea el entorno virtual aislado `.venv`.
+3. Instala todas las dependencias requeridas (`mcp`, `playwright`, `rich`, `pydantic`, `tomlkit`).
+4. Descarga y verifica el motor Chromium headless de Playwright.
+5. Registra el comando global `design-extractor` en tu terminal (PATH).
+6. Auto-detecta y configura clientes IA locales (**Google Antigravity**, **Claude Desktop**, **Cursor**, **Windsurf**, **VS Code**).
 
 ---
 
 ## 🎯 ¿Qué hace este proyecto?
 
-**Design Extractor MCP** es un motor de ingeniería inversa que navega cualquier página web en tiempo real usando un navegador headless (Playwright) para inspeccionar tanto el código fuente como los estilos computados del DOM.
+**Design Extractor MCP** es un motor integral de ingeniería inversa que navega cualquier página web en tiempo real usando un navegador headless (Playwright) para inspeccionar tanto el código fuente como los estilos computados del DOM.
 
-Extrae automáticamente:
-1. **🎨 Paleta y Tokens de Color:** Fondos de canvas, superficies/tarjetas, colores de texto (alto contraste y atenuado), acento de marca y bordes, con normalización automática a HEX/RGBA.
-2. **🌓 Probeta Dual-Theme (Modo Claro & Oscuro):** Emula automáticamente `prefers-color-scheme: dark` e inspecciona clases `.dark` o `data-theme` para sincronizar tokens semánticos en ambos modos.
-3. **♿ Auditoría de Accesibilidad WCAG 2.1:** Cálculo matemático de luminancia relativa y contrast ratios de color (niveles AA / AAA) entre pares de texto y fondo.
-4. **📱 Matriz Responsiva Multi-Viewport:** Probeta activa en vivo probando Desktop (1440px), Tablet (768px) y Mobile (375px), detectando la transformación de títulos, padding, comportamiento de grid y menús hamburguesa.
-5. **💎 Tokens W3C DTCG Estándar (`design-tokens.json`):** Exportación en el formato estándar de la W3C (*Design Tokens Community Group*), compatible directamente con Figma Tokens, Style Dictionary y Tailwind CSS.
-6. **🔤 Sistema Tipográfico y Fuentes Web:** Jerarquía exacta (**H1, H2, H3 y Párrafos**) con tamaños, pesos, interlineados, tracking y snippets de importación de Google Fonts / `@font-face`.
-7. **📐 Arquitectura de Layout y Divs:** Anchuras máximas de contenedor (`max-w-*`), espaciado rítmico (`py-16`), y esqueletos estructurales HTML limpios de **Header**, **Hero**, **Cards** y **Botones**.
-8. **🔐 Soporte de Sesiones Autenticadas (Moodle, SaaS, SSO):** Grabador interactivo de login (`design-extractor login <url>`) y soporte de cookies (`--cookie`) para auditar plataformas que requieren usuario y contraseña.
-9. **🤖 Prompt Maestro para Agentes (Master Directives):** Genera una hoja de instrucciones exhaustiva en Markdown (`.md`) lista para copiar y pegar a cualquier Agente de IA para replicar el diseño.
-10. **📸 Capturas de Pantalla:** Captura automáticamente una imagen completa en alta resolución (`.png`) para referencia visual.
+En cada extracción genera y emite **5 artefactos de producción atómicos**:
+1. 📄 **`{slug}_design_spec.md`**: Especificación completa en Markdown con directivas maestras para Agentes de IA.
+2. 💎 **`{slug}_design_tokens.json`**: Tokens de diseño estándar **W3C DTCG** (Design Tokens Community Group) para Figma y Style Dictionary.
+3. 🎨 **`{slug}_shadcn_globals.css`**: Hoja de estilos con variables HSL completas para `:root` (Light) y `.dark` (Dark mode) lista para proyectos Shadcn UI / Radix.
+4. ⚡ **`{slug}_tailwind_v4.css`**: Configuración moderna CSS-first con la directiva `@theme` para **Tailwind CSS v4**.
+5. 📸 **`{slug}_preview.png`**: Captura de pantalla completa en alta resolución para referencia visual y multimodal.
+
+### Capacidades Destacadas:
+- **🎨 Paleta y Tokens de Color:** Fondos de canvas, superficies/tarjetas, colores de texto (alto contraste y atenuado), acento de marca y bordes, con normalización automática a HEX/RGBA.
+- **🌓 Probeta Dual-Theme (Modo Claro & Oscuro):** Emula automáticamente `prefers-color-scheme: dark` e inspecciona clases `.dark` o `data-theme` para sincronizar tokens semánticos en ambos modos.
+- **♿ Auditoría de Accesibilidad WCAG 2.1:** Cálculo matemático de luminancia relativa y contrast ratios de color (niveles AA / AAA) entre pares de texto y fondo.
+- **📱 Matriz Responsiva Multi-Viewport:** Probeta activa en vivo probando Desktop (1440px), Tablet (768px) y Mobile (375px), detectando la transformación de títulos, padding, comportamiento de grid y menús hamburguesa.
+- **🖼️ Activos de Marca y Gráficos Vectoriales:** Extracción de favicons, logotipos SVG completos (outerHTML) y conteo de vectores en pantalla.
+- **🔤 Sistema Tipográfico y Fuentes Web:** Jerarquía exacta (**H1, H2, H3 y Párrafos**) con tamaños, pesos, interlineados, tracking y snippets de importación de Google Fonts / `@font-face`.
+- **📐 Arquitectura de Layout y Divs:** Anchuras máximas de contenedor (`max-w-*`), espaciado rítmico (`py-16`), y esqueletos estructurales HTML limpios de **Header**, **Hero**, **Cards** y **Botones**.
+- **🔐 Soporte de Sesiones Autenticadas (Moodle, SaaS, SSO):** Grabador interactivo de login (`design-extractor login <url>`) y soporte de cookies (`--cookie`) para auditar plataformas que requieren usuario y contraseña.
+- **🤖 Prompt Maestro para Agentes (Master Directives):** Genera una hoja de instrucciones exhaustiva en Markdown (`.md`) lista para copiar y pegar a cualquier Agente de IA para replicar el diseño.
 
 ---
 
-## 🔌 Compatibilidad Universal
+## 🔌 Compatibilidad Universal con Agentes de IA
 
 Este servidor sigue el estándar abierto **Model Context Protocol (MCP)** mediante transporte estándar `stdio`. **Es 100% compatible con cualquier cliente, IDE o CLI de IA que soporte MCP:**
 
@@ -88,7 +124,9 @@ En el archivo de configuración de MCP (ejemplo `mcp.json` o settings de la exte
 }
 ```
 
-### 4. Uso Directo en Terminal (Comando Global `design-extractor`)
+---
+
+## 💻 Uso Directo en Terminal (Comando Global `design-extractor`)
 
 Puedes ejecutar `design-extractor` de forma global desde cualquier carpeta de tu terminal sin necesidad de escribir rutas complejas a Python:
 
@@ -96,10 +134,10 @@ Puedes ejecutar `design-extractor` de forma global desde cualquier carpeta de tu
 # 1. Comprobar estado e integración en PATH:
 design-extractor status
 
-# 2. Abrir asistente interactivo de configuración y dashboard:
+# 2. Abrir asistente interactivo de configuración y dashboard TUI:
 design-extractor setup
 
-# 3. Extraer una web pública y guardar .md, .json y .png:
+# 3. Extraer una web pública (emite .md, tokens .json, Shadcn .css, Tailwind v4 .css y preview .png):
 design-extractor extract https://stripe.com
 
 # 4. Iniciar sesión interactiva en una web protegida (Moodle, SaaS, SSO):
@@ -114,7 +152,7 @@ design-extractor extract https://moodle.miuniversidad.edu/my -c "MoodleSession=a
 # 7. Vincular automáticamente con todos los clientes IA detectados:
 design-extractor install-agents
 
-# 8. Comprobar o descargar actualizaciones:
+# 8. Comprobar o descargar actualizaciones automáticas:
 design-extractor check-update
 design-extractor update
 ```
@@ -136,7 +174,6 @@ design-extractor update
 *(También disponible de forma gráfica en la opción `[8]` del menú interactivo `design-extractor setup` o directamente mediante la herramienta MCP `update_server` para agentes de IA)*.
 
 ---
-
 
 ## ⚡ Comandos Personalizados y Flujos de Trabajo (Presets)
 
@@ -169,85 +206,20 @@ design-extractor custom delete landing
 
 ---
 
-## 🌐 Integración en PATH del Sistema
-
-Para tener el comando `design-extractor` disponible en cualquier terminal (PowerShell, CMD, Bash, Git Bash):
-
-```bash
-# Instalar shim global en tu PATH de usuario:
-design-extractor path install
-
-# Comprobar estado:
-design-extractor path status
-
-# O mediante pip editable:
-pip install -e .
-```
-*(También puedes instalarlo interactivamente seleccionando la opción `[5]` en `design-extractor setup`)*.
-
----
-
-## 🚀 Instalación y Puesta en Marcha
-
-### 1. Clonar el repositorio
-```bash
-git clone https://github.com/JhonnyCCM/Design-Extractor-MCP.git
-cd Design-Extractor-MCP
-```
-
-### 2. Crear entorno virtual e instalar dependencias
-En Windows (PowerShell):
-```powershell
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-playwright install chromium
-```
-
-En Linux / macOS:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-playwright install chromium
-```
-
-### 3. Asistente Interactivo de Configuración
-Para abrir la pantalla de configuración :
-
-- **En Windows:** Haz doble clic en `configurar.bat` o ejecuta:
-  ```powershell
-  python cli.py setup
-  ```
-- **En Linux / Mac:**
-  ```bash
-  python3 cli.py setup
-  ```
-
-Desde este menú interactivo puedes:
-- `[1]` Cambiar la carpeta permanente donde se guardan tus `.md`, `.json` y `.png`.
-- `[2]` Vincular automáticamente en todos los clientes IA y CLIs detectadas.
-- `[3]` Probar la extracción en vivo de cualquier URL (pública o autenticada).
-- `[4]` Abrir la carpeta de destino en el Explorador de archivos de Windows.
-- `[5]` Instalar o verificar comando global en PATH (`design-extractor`).
-- `[6]` Administrar comandos personalizados y presets de flujo de trabajo.
-- `[7]` Ver la guía de prompts y ejemplos para pasarle a tu agente de IA.
-- `[8]` Buscar o instalar actualizaciones automáticas desde GitHub (Auto-Update).
-- `[9]` Iniciar sesión interactiva en un sitio web y guardar credenciales (`auth.json`).
-- `[0]` Salir del asistente.
-
----
-
 ## 🛠️ Herramientas MCP Expuestas
 
-Cuando un Agente de IA se conecta a este servidor, tiene acceso a las siguientes herramientas:
+Cuando un Agente de IA se conecta a este servidor, tiene acceso a las siguientes herramientas modulares:
 
 | Herramienta | Parámetros | Descripción |
 | :--- | :--- | :--- |
-| **`extract_design_system`** | `url`, `output_file`, `storage_state`, `cookie` | Visita la web, extrae el sistema completo, guarda el archivo `.md`, los tokens W3C `.json` y la captura `.png`, y devuelve la especificación maestra. |
+| **`extract_design_system`** | `url`, `output_file`, `storage_state`, `cookie` | Visita la web, extrae el sistema completo, emite todos los artefactos (`.md`, `.json`, `shadcn.css`, `tailwind_v4.css`, `.png`), y devuelve la especificación maestra. |
 | **`extract_design_tokens`** | `url`, `output_file`, `storage_state`, `cookie` | Extrae y guarda tokens de diseño estándar W3C DTCG en formato JSON compatible con Figma y Style Dictionary. |
-| **`inspect_component`** | `url`, `selector`, `storage_state`, `cookie` | Inspecciona un elemento específico por selector CSS (ej. `header`, `.pricing-card`, `button.cta`) devolviendo sus dimensiones exactas, bordes y HTML. |
-| **`generate_tailwind_theme`** | `url`, `storage_state`, `cookie` | Extrae los tokens de la página y devuelve un bloque listo para copiar en `tailwind.config.js`. |
+| **`generate_shadcn_theme`** | `url`, `storage_state`, `cookie` | Genera un archivo `globals.css` completo con variables HSL para `:root` y `.dark` listo para proyectos Shadcn UI. |
+| **`generate_tailwind_v4_theme`** | `url`, `storage_state`, `cookie` | Genera la configuración moderna CSS-first con la directiva `@theme` para Tailwind CSS v4. |
+| **`extract_brand_assets`** | `url`, `storage_state`, `cookie` | Extrae activos visuales de identidad: favicon, logotipo principal SVG y métricas de iconos vectoriales. |
+| **`check_accessibility_audit`** | `url`, `storage_state`, `cookie` | Realiza una auditoría matemática de contraste WCAG 2.1 con ratios y niveles AA/AAA entre textos y fondos. |
+| **`inspect_component`** | `url`, `selector`, `storage_state`, `cookie` | Inspecciona un elemento específico por selector CSS devolviendo sus dimensiones exactas, bordes y HTML. |
+| **`generate_tailwind_theme`** | `url`, `storage_state`, `cookie` | Extrae los tokens de la página y devuelve un bloque listo para copiar en `tailwind.config.js` (Tailwind v3). |
 | **`inspect_page_source`** | `url`, `storage_state`, `cookie` | Realiza auditoría del código fuente: frameworks detectados, breakpoints `@media` y clases de utilidad. |
 | **`capture_page_screenshot`** | `url`, `output_path`, `storage_state`, `cookie` | Captura una imagen de alta resolución de la página completa. |
 | **`set_output_directory`** | `path` | Actualiza y persiste la carpeta de guardado de los archivos. |
@@ -257,35 +229,12 @@ Cuando un Agente de IA se conecta a este servidor, tiene acceso a las siguientes
 
 ---
 
-## 📋 Ejemplo del Markdown Generado para Agentes
-
-Cada extracción genera un archivo con directivas maestras listas para pasar a tu agente:
-
-```markdown
-### AGENT MASTER DIRECTIVES: DESIGN FIDELITY RULES
-
-1. CANVAS & PALETTE CONSTRAINTS:
-   - Root background MUST be '#181733' with default text '#ffffff'.
-   - Surfaces/Cards MUST use '#1c1b3d' with border 'rgba(255, 255, 255, 0.08)'.
-   - Accent color '#fbc43f' is reserved for primary CTA buttons and live badges.
-
-2. TYPOGRAPHY RULES:
-   - Headings font: 'Oswald' (condensed, uppercase).
-   - Body font: 'Inter'.
-   - Hero Title (H1): 72px scale, extrabold (800), line-height 0.95.
-
-3. CONTAINER & WRAPPER ARCHITECTURE:
-   - Wrap each section in:
-     <section class="py-16 md:py-24"><div class="max-w-[1480px] mx-auto px-4 sm:px-6">...</div></section>
-   - Grid layout: grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6.
-```
-
----
-
 ## 📂 Estructura del Repositorio
 
 ```text
 web-design-extractor-mcp/
+├── INSTALAR-WINDOWS.ps1 # Instalador automático en 1 clic para PowerShell
+├── install.sh           # Instalador automático para Linux y macOS
 ├── cli.py               # Punto de entrada unificado y ejecutor de atajos (design-extractor)
 ├── setup_wizard.py      # Asistente interactivo de terminal estilo Moodle MCP
 ├── ui.py                # Componentes visuales, tablas y dashboard renderizados con Rich
@@ -298,12 +247,21 @@ web-design-extractor-mcp/
 ├── core_extractor.py    # Motor de análisis DOM, estilos computados y Playwright
 ├── config_manager.py    # Gestor de carpetas y persistencia de configuración
 ├── configurar.bat       # Lanzador rápido para terminal en Windows
-├── pyproject.toml       # Especificación de paquete estándar y entry point
+├── pyproject.toml       # Especificación de paquete estándar y entry point (v1.4.0)
 ├── requirements.txt     # Dependencias de Python
-├── .gitignore           # Exclusiones de Git (entornos, temporales, logs)
+├── tests/               # Pruebas unitarias completas (test_phase3.py, test_phase4.py)
+├── .github/workflows/   # CI automático en Windows y Ubuntu con Python 3.10-3.12
 └── README.md            # Documentación completa
 ```
 
+---
+
+## 🧪 Pruebas Unitarias
+
+Para ejecutar el suite de pruebas en tu máquina:
+```bash
+python -m unittest discover tests
+```
 
 ---
 

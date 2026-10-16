@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "design-extractor-mcp"
-version = "1.3.0"
+version = "1.4.0"
 description = "Model Context Protocol (MCP) Server & CLI for web design system reverse engineering"
 readme = "README.md"
 requires-python = ">=3.10"

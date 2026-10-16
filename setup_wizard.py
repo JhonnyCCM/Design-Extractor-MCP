@@ -21,6 +21,8 @@ from core_extractor import (
     extract_page_design_data,
     generate_agent_design_spec,
     generate_w3c_design_tokens,
+    generate_shadcn_theme,
+    generate_tailwind_v4_theme,
     save_login_session,
     take_screenshot
 )
@@ -105,6 +107,8 @@ def handle_test_extraction() -> None:
     slug = _url_to_slug(url)
     target_md = out_dir / f"{slug}_design_spec.md"
     target_tokens = out_dir / f"{slug}_design_tokens.json"
+    target_shadcn = out_dir / f"{slug}_shadcn_globals.css"
+    target_tw4 = out_dir / f"{slug}_tailwind_v4.css"
     target_png = out_dir / f"{slug}_preview.png"
 
     try:
@@ -116,9 +120,13 @@ def handle_test_extraction() -> None:
             )
             spec_md = generate_agent_design_spec(data, url)
             tokens_data = generate_w3c_design_tokens(data)
+            shadcn_css = generate_shadcn_theme(data)
+            tw4_css = generate_tailwind_v4_theme(data)
 
             atomic_write(target_md, spec_md)
             atomic_write(target_tokens, json.dumps(tokens_data, indent=2, ensure_ascii=False) + "\n")
+            atomic_write(target_shadcn, shadcn_css)
+            atomic_write(target_tw4, tw4_css)
             take_screenshot(
                 url,
                 str(target_png),
@@ -140,6 +148,8 @@ def handle_test_extraction() -> None:
         summary_table.add_row("Fuente de Títulos", (data.get("typography", {}).get("h1") or {}).get("fontFamily", "Inter"))
         summary_table.add_row("Tech Stack / Frameworks", ", ".join(data.get("techStack", [])) or "Custom HTML/CSS")
         summary_table.add_row("Tokens W3C (DTCG)", str(target_tokens))
+        summary_table.add_row("Tema Shadcn UI", str(target_shadcn))
+        summary_table.add_row("Tema Tailwind v4", str(target_tw4))
         summary_table.add_row("Archivo Markdown", str(target_md))
         summary_table.add_row("Captura PNG", str(target_png))
 

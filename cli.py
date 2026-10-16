@@ -178,6 +178,8 @@ def main():
             extract_page_design_data,
             generate_agent_design_spec,
             generate_w3c_design_tokens,
+            generate_shadcn_theme,
+            generate_tailwind_v4_theme,
             take_screenshot
         )
         from server import _url_to_slug
@@ -189,6 +191,8 @@ def main():
         slug = _url_to_slug(url)
         target_md = Path(args.output).resolve() if args.output else out_dir / f"{slug}_design_spec.md"
         target_tokens = target_md.parent / f"{slug}_design_tokens.json"
+        target_shadcn = target_md.parent / f"{slug}_shadcn_globals.css"
+        target_tw4 = target_md.parent / f"{slug}_tailwind_v4.css"
         target_png = target_md.parent / f"{slug}_preview.png"
 
         auth_notice = " (con sesión autenticada)" if (args.storage_state or args.cookie) else ""
@@ -200,9 +204,14 @@ def main():
         )
         spec_md = generate_agent_design_spec(data, url)
         tokens_data = generate_w3c_design_tokens(data)
+        shadcn_css = generate_shadcn_theme(data)
+        tw4_css = generate_tailwind_v4_theme(data)
 
         atomic_write(target_md, spec_md)
         atomic_write(target_tokens, json.dumps(tokens_data, indent=2, ensure_ascii=False) + "\n")
+        atomic_write(target_shadcn, shadcn_css)
+        atomic_write(target_tw4, tw4_css)
+
         take_screenshot(
             url,
             str(target_png),
@@ -212,6 +221,8 @@ def main():
         )
         print(f"[OK] Especificación Markdown guardada en: {target_md}")
         print(f"[OK] Tokens W3C (DTCG) guardados en:     {target_tokens}")
+        print(f"[OK] Tema Shadcn UI guardado en:         {target_shadcn}")
+        print(f"[OK] Tema Tailwind v4 guardado en:       {target_tw4}")
         print(f"[OK] Captura de pantalla guardada en:    {target_png}")
 
     elif args.command == "path":
@@ -278,6 +289,10 @@ def main():
                 print(f"[OK] Especificación Markdown guardada en: {res['spec_file']}")
                 if res.get("tokens_file"):
                     print(f"[OK] Tokens W3C (DTCG) guardados en:     {res['tokens_file']}")
+                if res.get("shadcn_file"):
+                    print(f"[OK] Tema Shadcn UI guardado en:         {res['shadcn_file']}")
+                if res.get("tailwind_v4_file"):
+                    print(f"[OK] Tema Tailwind v4 guardado en:       {res['tailwind_v4_file']}")
                 if res.get("preview_file"):
                     print(f"[OK] Captura de pantalla guardada en:    {res['preview_file']}")
             except Exception as e:
