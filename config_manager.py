@@ -10,8 +10,11 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from storage import atomic_write
+
 CONFIG_FILE = Path(__file__).parent / "config.json"
 DEFAULT_OUTPUT_DIR = Path.home() / "DesignSpecs"
+
 
 
 def get_configured_output_dir() -> Path:
@@ -65,5 +68,6 @@ def set_configured_output_dir(new_path: str) -> str:
             pass
 
     data["output_dir"] = str(target_path)
-    CONFIG_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    atomic_write(CONFIG_FILE, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     return str(target_path)
+

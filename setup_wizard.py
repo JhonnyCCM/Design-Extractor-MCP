@@ -265,6 +265,27 @@ def handle_manage_presets() -> None:
             break
 
 
+def handle_update() -> None:
+    """Interactively checks for updates and allows one-click auto-updating."""
+    from updater import check_for_updates, apply_update, CURRENT_VERSION
+    console.print()
+    with console.status("[bold #38bdf8]Consultando repositorio oficial en GitHub...[/bold #38bdf8]", spinner="dots"):
+        has_update, msg, remote_id = check_for_updates(force=True)
+
+    if has_update:
+        console.print(f"[bold yellow][!] {msg}[/bold yellow]")
+        confirm = console.input("\n[bold #38bdf8]¿Deseas aplicar la actualización ahora? [S/n]: [/bold #38bdf8]").strip().lower()
+        if confirm in ["", "s", "si", "y", "yes"]:
+            with console.status("[bold #38bdf8]Descargando cambios y actualizando dependencias...[/bold #38bdf8]", spinner="dots"):
+                ok, update_msg = apply_update()
+            if ok:
+                console.print(f"[bold green][OK] {update_msg}[/bold green]")
+            else:
+                console.print(f"[bold red][ERROR] {update_msg}[/bold red]")
+    else:
+        console.print(f"[bold green][OK] {msg}[/bold green]")
+
+
 def run_wizard() -> None:
     """Main interactive wizard loop."""
     while True:
@@ -287,15 +308,18 @@ def run_wizard() -> None:
             handle_manage_presets()
         elif choice == "7":
             handle_view_agent_guide()
+        elif choice == "8":
+            handle_update()
         elif choice in ["0", "q", "exit", "salir"]:
             console.print("\n[bold green]¡Hasta pronto! Que disfrutes construyendo grandes interfaces.[/bold green]\n")
             break
         else:
-            console.print("[red]Opción no válida. Elige un número del 0 al 7.[/red]")
+            console.print("[red]Opción no válida. Elige un número del 0 al 8.[/red]")
 
         console.input("\n[dim]Presiona Enter para continuar...[/dim]")
 
 
 if __name__ == "__main__":
     run_wizard()
+
 

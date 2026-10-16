@@ -14,7 +14,9 @@ from typing import Optional
 from mcp.server.fastmcp import FastMCP
 
 from config_manager import get_configured_output_dir, set_configured_output_dir
+from storage import atomic_write, redact_sensitive_data
 from core_extractor import (
+
     async_extract_page_design_data,
     async_inspect_single_element,
     async_take_screenshot,
@@ -95,7 +97,7 @@ async def extract_design_system(url: str, output_file: str = "") -> str:
             target_md = out_dir / f"{slug}_design_spec.md"
 
         target_md.parent.mkdir(parents=True, exist_ok=True)
-        target_md.write_text(spec_md, encoding="utf-8")
+        atomic_write(target_md, spec_md)
 
         # 3. Capture screenshot
         target_png = target_md.parent / f"{slug}_preview.png"
@@ -110,7 +112,8 @@ async def extract_design_system(url: str, output_file: str = "") -> str:
 
         return spec_md + location_notice
     except Exception as e:
-        return f"Error extracting design system from {url}: {str(e)}"
+        return f"Error extracting design system from {url}: {redact_sensitive_data(str(e))}"
+
 
 
 @mcp.tool()
@@ -207,8 +210,35 @@ async def capture_page_screenshot(url: str, output_path: str = "") -> str:
         saved_path = await async_take_screenshot(url, output_path, full_page=True)
         return f"Full-page screenshot successfully captured and saved to: {saved_path}"
     except Exception as e:
-        return f"Error capturing screenshot for {url}: {str(e)}"
+        return f"Error capturing screenshot for {url}: {redact_sensitive_data(str(e))}"
+
+
+@mcp.tool()
+def check_for_updates() -> str:
+    """
+    Checks if a newer version of Design Extractor MCP is available in the official GitHub repository.
+    Returns current status and instructions to upgrade if an update is found.
+    """
+    from updater import check_for_updates
+    has_update, msg, remote_id = check_for_updates(force=True)
+    if has_update:
+        return f"UPDATE AVAILABLE: {msg}\nTo install the update, invoke the 'update_server' tool or run 'design-extractor update' in terminal."
+    return f"UP TO DATE: {msg}"
+
+
+@mcp.tool()
+def update_server() -> str:
+    """
+    Pulls the latest code from GitHub and updates dependencies.
+    Requires restarting the MCP client/agent afterwards to load new code.
+    """
+    from updater import apply_update
+    ok, msg = apply_update()
+    if ok:
+        return f"SUCCESS: {msg}\nPlease restart your AI agent or reload your MCP server connection to use the updated version."
+    return f"UPDATE FAILED: {msg}"
 
 
 if __name__ == "__main__":
     mcp.run()
+

@@ -43,3 +43,7 @@ desktop.ini
 # Logs & Playwright
 browser-install.log
 *.log
+
+# Cache
+.cache/
+

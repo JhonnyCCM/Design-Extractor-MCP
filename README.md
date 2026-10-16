@@ -99,9 +99,30 @@ design-extractor extract https://stripe.com
 
 # 4. Vincular automáticamente con todos los clientes IA detectados:
 design-extractor install-agents
+
+# 5. Comprobar o descargar actualizaciones:
+design-extractor check-update
+design-extractor update
 ```
 
 ---
+
+## 🔄 Auto-Update y Actualizaciones
+
+Design Extractor incluye un motor de auto-actualización inteligente que consulta el repositorio oficial en GitHub y actualiza el código, dependencias y shims en un solo paso:
+
+```bash
+# Comprobar si hay actualizaciones disponibles:
+design-extractor check-update
+
+# Descargar e instalar la última versión desde GitHub:
+design-extractor update
+```
+
+*(También disponible de forma gráfica en la opción `[8]` del menú interactivo `design-extractor setup` o directamente mediante la herramienta MCP `update_server` para agentes de IA)*.
+
+---
+
 
 ## ⚡ Comandos Personalizados y Flujos de Trabajo (Presets)
 
@@ -211,6 +232,8 @@ Cuando un Agente de IA se conecta a este servidor, tiene acceso a las siguientes
 | **`capture_page_screenshot`** | `url` *(str)*, `output_path` *(opcional)* | Captura una imagen de alta resolución de la página completa. |
 | **`set_output_directory`** | `path` *(str)* | Actualiza y persiste la carpeta de guardado de los archivos. |
 | **`get_output_directory`** | *(ninguno)* | Devuelve la ruta de la carpeta activa actual. |
+| **`check_for_updates`** | *(ninguno)* | Comprueba si existe una versión más reciente en GitHub. |
+| **`update_server`** | *(ninguno)* | Descarga automáticamente la última versión desde GitHub y actualiza dependencias. |
 
 ---
 
@@ -246,6 +269,9 @@ web-design-extractor-mcp/
 ├── cli.py               # Punto de entrada unificado y ejecutor de atajos (design-extractor)
 ├── setup_wizard.py      # Asistente interactivo de terminal estilo Moodle MCP
 ├── ui.py                # Componentes visuales, tablas y dashboard renderizados con Rich
+├── updater.py           # Motor de auto-actualización inteligente con GitHub
+├── system_checker.py    # Auto-diagnóstico y auto-reparación de Playwright Chromium
+├── storage.py           # Escritura atómica a prueba de fallos y caché con TTL
 ├── path_installer.py    # Integración global del comando en PATH (Windows/Linux/macOS)
 ├── preset_manager.py    # Gestor de flujos de trabajo personalizados y presets
 ├── server.py            # Servidor MCP (FastMCP) con todas las herramientas expuestas
@@ -256,8 +282,8 @@ web-design-extractor-mcp/
 ├── requirements.txt     # Dependencias de Python
 ├── .gitignore           # Exclusiones de Git (entornos, temporales, logs)
 └── README.md            # Documentación completa
-
 ```
+
 
 ---
 

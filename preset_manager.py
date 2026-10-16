@@ -9,7 +9,10 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
+from storage import atomic_write
+
 CONFIG_FILE = Path(__file__).parent / "config.json"
+
 
 DEFAULT_PRESETS = {
     "quick": {
@@ -37,7 +40,8 @@ def _load_config() -> Dict[str, Any]:
 
 
 def _save_config(data: Dict[str, Any]) -> None:
-    CONFIG_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    atomic_write(CONFIG_FILE, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
 
 
 def get_all_presets() -> Dict[str, Dict[str, Any]]:

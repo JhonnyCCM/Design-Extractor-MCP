@@ -93,6 +93,31 @@ def show_dashboard(output_dir: Path, agents_status: Dict[str, Any]) -> None:
         f"[dim white]{preset_names}[/dim white]"
     )
 
+    # Version & Update status
+    from updater import check_for_updates, CURRENT_VERSION, get_current_commit
+    try:
+        has_update, update_msg, remote_id = check_for_updates(force=False)
+        commit = get_current_commit() or "main"
+        if has_update:
+            status_table.add_row(
+                "Versión / Updates",
+                "[yellow][!] Actualizable[/yellow]",
+                f"[bold yellow]Nueva versión disponible ({remote_id}). Ejecuta 'design-extractor update'[/bold yellow]"
+            )
+        else:
+            status_table.add_row(
+                "Versión / Updates",
+                "[green][OK] Al día[/green]",
+                f"[dim]v{CURRENT_VERSION} ({commit}) · Sincronizado con GitHub[/dim]"
+            )
+    except Exception:
+        status_table.add_row(
+            "Versión / Updates",
+            f"[dim]v{CURRENT_VERSION}[/dim]",
+            "[dim]Comprobación offline[/dim]"
+        )
+
+
     console.print(Panel(
         status_table,
         title="[bold #38bdf8] ESTADO DEL MOTOR DE EXTRACCIÓN [/bold #38bdf8]",
@@ -170,6 +195,7 @@ def show_menu() -> str:
     menu_table.add_row("[5]", "Instalar o verificar comando global en PATH (design-extractor)")
     menu_table.add_row("[6]", "Administrar comandos personalizados y presets de flujo de trabajo")
     menu_table.add_row("[7]", "Ver guía de prompts y ejemplos para pasarle a tu agente")
+    menu_table.add_row("[8]", "Buscar o instalar actualizaciones de Design Extractor (Auto-Update)")
     menu_table.add_row("[0]", "Salir")
 
     console.print(Panel(
@@ -179,6 +205,6 @@ def show_menu() -> str:
         box=box.ROUNDED
     ))
 
-    choice = console.input("[bold #38bdf8]Selecciona una opción [0-7]: [/bold #38bdf8]").strip()
+    choice = console.input("[bold #38bdf8]Selecciona una opción [0-8]: [/bold #38bdf8]").strip()
     return choice
 

@@ -13,7 +13,42 @@ from typing import Dict, Any, List, Optional
 from playwright.sync_api import sync_playwright
 from playwright.async_api import async_playwright
 
-BROWSER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+from storage import get_cached_extraction, set_cached_extraction, atomic_write
+from system_checker import ensure_browser_ready
+
+
+BROWSER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+BROWSER_LAUNCH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--no-sandbox",
+    "--disable-setuid-sandbox"
+]
+
+
+def _wait_for_challenge_resolution_sync(page, max_seconds: int = 12):
+    """Waits if an anti-bot challenge or interstitial loader is present."""
+    import time
+    for _ in range(max_seconds):
+        try:
+            t = (page.title() or "").lower()
+            if not any(k in t for k in ["one moment", "just a moment", "security check", "cloudflare", "loader"]) and not t.startswith("loading"):
+                break
+        except Exception:
+            pass
+        page.wait_for_timeout(1000)
+
+
+async def _wait_for_challenge_resolution_async(page, max_seconds: int = 12):
+    """Waits if an anti-bot challenge or interstitial loader is present."""
+    for _ in range(max_seconds):
+        try:
+            t = ((await page.title()) or "").lower()
+            if not any(k in t for k in ["one moment", "just a moment", "security check", "cloudflare", "loader"]) and not t.startswith("loading"):
+                break
+        except Exception:
+            pass
+        await page.wait_for_timeout(1000)
+
 
 EXTRACTION_JS = """
 () => {
@@ -431,16 +466,23 @@ EXTRACTION_JS = """
 """
 
 
-def extract_page_design_data(url: str, wait_seconds: int = 2) -> Dict[str, Any]:
+def extract_page_design_data(url: str, wait_seconds: int = 2, use_cache: bool = True) -> Dict[str, Any]:
     """Inspects a page using Playwright and extracts comprehensive design data."""
+    if use_cache:
+        cached = get_cached_extraction(url)
+        if cached:
+            return cached
+
+    ensure_browser_ready()
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
         context = browser.new_context(
             user_agent=BROWSER_USER_AGENT,
             viewport={"width": 1440, "height": 900}
         )
         page = context.new_page()
         page.goto(url, wait_until="domcontentloaded", timeout=40000)
+        _wait_for_challenge_resolution_sync(page)
         try:
             page.wait_for_load_state("networkidle", timeout=7000)
         except Exception:
@@ -449,16 +491,20 @@ def extract_page_design_data(url: str, wait_seconds: int = 2) -> Dict[str, Any]:
 
         data = page.evaluate(EXTRACTION_JS)
         browser.close()
+        if use_cache:
+            set_cached_extraction(url, data)
         return data
+
 
 
 def inspect_single_element(url: str, selector: str) -> Dict[str, Any]:
     """Inspects a specific element on a page by CSS selector."""
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
         context = browser.new_context(user_agent=BROWSER_USER_AGENT, viewport={"width": 1440, "height": 900})
         page = context.new_page()
         page.goto(url, wait_until="domcontentloaded", timeout=35000)
+        _wait_for_challenge_resolution_sync(page)
         page.wait_for_timeout(2000)
 
         js = f"""(sel) => {{
@@ -511,10 +557,11 @@ def inspect_single_element(url: str, selector: str) -> Dict[str, Any]:
 def take_screenshot(url: str, output_path: str, full_page: bool = True) -> str:
     """Takes a full-page or viewport screenshot of a webpage."""
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
         context = browser.new_context(user_agent=BROWSER_USER_AGENT, viewport={"width": 1440, "height": 900})
         page = context.new_page()
         page.goto(url, wait_until="domcontentloaded", timeout=35000)
+        _wait_for_challenge_resolution_sync(page)
         page.wait_for_timeout(2500)
 
         out_file = Path(output_path).resolve()
@@ -524,16 +571,24 @@ def take_screenshot(url: str, output_path: str, full_page: bool = True) -> str:
         return str(out_file)
 
 
-async def async_extract_page_design_data(url: str, wait_seconds: int = 2) -> Dict[str, Any]:
+
+async def async_extract_page_design_data(url: str, wait_seconds: int = 2, use_cache: bool = True) -> Dict[str, Any]:
     """Inspects a page using Playwright Async API and extracts comprehensive design data."""
+    if use_cache:
+        cached = get_cached_extraction(url)
+        if cached:
+            return cached
+
+    ensure_browser_ready()
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
         context = await browser.new_context(
             user_agent=BROWSER_USER_AGENT,
             viewport={"width": 1440, "height": 900}
         )
         page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded", timeout=40000)
+        await _wait_for_challenge_resolution_async(page)
         try:
             await page.wait_for_load_state("networkidle", timeout=7000)
         except Exception:
@@ -542,16 +597,20 @@ async def async_extract_page_design_data(url: str, wait_seconds: int = 2) -> Dic
 
         data = await page.evaluate(EXTRACTION_JS)
         await browser.close()
+        if use_cache:
+            set_cached_extraction(url, data)
         return data
+
 
 
 async def async_inspect_single_element(url: str, selector: str) -> Dict[str, Any]:
     """Inspects a specific element on a page by CSS selector using Async API."""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
         context = await browser.new_context(user_agent=BROWSER_USER_AGENT, viewport={"width": 1440, "height": 900})
         page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded", timeout=35000)
+        await _wait_for_challenge_resolution_async(page)
         await page.wait_for_timeout(2000)
 
         js = f"""(sel) => {{
@@ -604,10 +663,11 @@ async def async_inspect_single_element(url: str, selector: str) -> Dict[str, Any
 async def async_take_screenshot(url: str, output_path: str, full_page: bool = True) -> str:
     """Takes a full-page or viewport screenshot using Async API."""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=True, args=BROWSER_LAUNCH_ARGS)
         context = await browser.new_context(user_agent=BROWSER_USER_AGENT, viewport={"width": 1440, "height": 900})
         page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded", timeout=35000)
+        await _wait_for_challenge_resolution_async(page)
         await page.wait_for_timeout(2500)
 
         out_file = Path(output_path).resolve()
@@ -615,6 +675,7 @@ async def async_take_screenshot(url: str, output_path: str, full_page: bool = Tr
         await page.screenshot(path=str(out_file), full_page=full_page)
         await browser.close()
         return str(out_file)
+
 
 
 

@@ -26,8 +26,10 @@ from preset_manager import get_all_presets, get_preset, create_or_update_preset,
 def main():
     known_commands = {
         "setup", "run", "status", "install-agents", "serve",
-        "extract", "path", "custom", "preset", "-h", "--help"
+        "extract", "path", "custom", "preset", "update", "self-update", "check-update",
+        "-h", "--help"
     }
+
 
     # Direct shortcut for custom presets: e.g. design-extractor quick https://stripe.com
     if len(sys.argv) > 1 and sys.argv[1] not in known_commands and not sys.argv[1].startswith("-"):
@@ -111,7 +113,16 @@ def main():
         c_run.add_argument("url", help="URL a analizar")
         c_run.add_argument("-o", "--output", default=None, help="Carpeta de salida personalizada")
 
+    # Command: update / self-update
+    update_parser = subparsers.add_parser("update", help="Actualizar Design Extractor automáticamente desde GitHub")
+    update_parser.add_argument("--force", action="store_true", help="Forzar reinstalación aunque esté al día")
+    subparsers.add_parser("self-update", help="Alias de update")
+
+    # Command: check-update
+    subparsers.add_parser("check-update", help="Comprobar si existen nuevas actualizaciones en GitHub sin instalarlas")
+
     args = parser.parse_args()
+
 
     if args.command in ["setup", "run"] or args.command is None:
         run_wizard()
@@ -211,6 +222,27 @@ def main():
                 print(f"[ERROR] {e}")
                 sys.exit(1)
 
+    elif args.command in ["update", "self-update"]:
+        from updater import apply_update, check_for_updates
+        print("[*] Comprobando actualizaciones en GitHub...")
+        has_update, msg, remote_id = check_for_updates(force=True)
+        if not has_update and not getattr(args, "force", False):
+            print(f"[OK] {msg}")
+        else:
+            print(f"[*] {msg}")
+            print("[*] Descargando cambios e instalando dependencias...")
+            ok, update_msg = apply_update()
+            status = "[OK]" if ok else "[ERROR]"
+            print(f"{status} {update_msg}")
+
+    elif args.command == "check-update":
+        from updater import check_for_updates
+        print("[*] Comprobando actualizaciones en GitHub...")
+        has_update, msg, remote_id = check_for_updates(force=True)
+        status = "[!]" if has_update else "[OK]"
+        print(f"{status} {msg}")
+
 
 if __name__ == "__main__":
     main()
+
